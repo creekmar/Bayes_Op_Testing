@@ -44,7 +44,7 @@ def plot_true_objective(f_range, f, params = None, n_pts = 200, directory="./"):
     plt.show() 
     plt.savefig(directory + "true_objective")
 
-def print_results(result, directory = "./"):
+def print_results(result, directory = "/"):
     """
     Print the testing results of scikit-optimize. Save convergence and objective plot
     @param: result - Scikit Optimizer result after all iterations and testing are done
@@ -58,10 +58,11 @@ def print_results(result, directory = "./"):
     fig2 = plt.figure()
     plot_convergence(result)
     # input("Press enter to see fig 1")
-    plt.show()
+    
     plt.savefig(directory + "convergence_plot")
+    plt.show()
     # fig3 = plt.figure()
     plot_objective(result)
     # input("Press enter to see fig 2")
-    plt.show()
     plt.savefig(directory + "objective_plot")
+    plt.show()
