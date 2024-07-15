@@ -4,9 +4,11 @@ Author: Ming Creekmore
 Purpose: Some helper functions to plot standardized specific results for data testing
 """
 
-from matplotlib import cm, pyplot as plt
+from matplotlib import cm, pyplot as plt, colors
+from matplotlib.axes import Axes
 import numpy as np
 from skopt.plots import plot_convergence, plot_objective
+import pandas as pd
 
 
 def plot_true_objective(f_range, f, params = None, n_pts = 200, directory="./"):
@@ -44,7 +46,27 @@ def plot_true_objective(f_range, f, params = None, n_pts = 200, directory="./"):
     plt.show() 
     plt.savefig(directory + "true_objective")
 
-def print_results(result, directory = "/"):
+def plt4d(f, n=100, directory="./"):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    x = (np.random.random(n) * 45) + 5
+    y = (np.random.random(n) * 75) + 25
+    z = np.random.randint(0, 6, n)
+    c = np.zeros(n)
+    for i in range(n):
+        c[i] = f([x[i], y[i], z[i]])
+
+    img = ax.scatter(x, y, c, c=z, cmap=plt.hot())
+    fig.colorbar(img)
+    plt.savefig(directory + "4d_objetive")
+    plt.show()
+    df = pd.DataFrame({'motor': x, 'heater': y, 'material': z, 'objective': c}, 
+                      columns=['motor', 'heater', 'material', 'objective'])
+    print(df)
+    df.to_csv("4d_objective.csv")
+
+def print_results(result, directory = "./"):
     """
     Print the testing results of scikit-optimize. Save convergence and objective plot
     @param: result - Scikit Optimizer result after all iterations and testing are done
