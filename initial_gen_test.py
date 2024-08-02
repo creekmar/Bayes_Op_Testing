@@ -10,7 +10,7 @@ def test():
     lhs_points = take_sample(lhs)
 
 
-def take_sample(model, num=2, initial_points=10):
+def take_sample(model, num=1, initial_points=10):
     points = []
     n = 0
     while n < initial_points:

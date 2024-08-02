@@ -4,12 +4,14 @@ Author: Ming Creekmore
 Purpose: Some helper functions to plot standardized specific results for data testing
 """
 
+import random
 from matplotlib import cm, pyplot as plt, colors
 from matplotlib.axes import Axes
 import numpy as np
 from skopt.plots import plot_convergence, plot_objective
 import pandas as pd
 
+MATERIAL_TEMP = [("CU", 25.0), ("TP", 50.0), ("MN", 70.0), ("SN", 90.0), ("PC", 40.0), ("DR", 40.0)]
 
 def plot_true_objective(f_range, f, params = None, n_pts = 200, directory="./"):
     """
@@ -46,13 +48,23 @@ def plot_true_objective(f_range, f, params = None, n_pts = 200, directory="./"):
     plt.show() 
     plt.savefig(directory + "true_objective")
 
-def plt4d(f, n=100, directory="./"):
+def plt4d(f, data=None, n=100, directory="./"):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
+    if data is None:
+        z = np.random.randint(0, 6, n)
+        x = np.zeros(n)
+        y = np.zeros(n)
+        for i in range(n):
+            x[i] = (random.random() * 45) + 5 # motor
+            sd = 20
+            bp = MATERIAL_TEMP[z[i]][1]
+            if 100-bp<sd:
+                sd = 100-bp
+            y[i] = (random.random() * sd) + bp # temperature
+    else:
+        x, y, z = data
 
-    x = (np.random.random(n) * 45) + 5
-    y = (np.random.random(n) * 75) + 25
-    z = np.random.randint(0, 6, n)
     c = np.zeros(n)
     for i in range(n):
         c[i] = f([x[i], y[i], z[i]])

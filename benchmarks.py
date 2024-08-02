@@ -35,7 +35,12 @@ def mix(lst):
 
 def dummy_measure(m_lst):
     def f(params):
-        motor, heater, material = params
+        if isinstance(params, dict):
+            motor = params['motor']
+            heater = params['heater']
+            material = params['material']
+        else:
+            motor, heater, material = params
         bp = m_lst[material][1]
         if material <= 3:
             return math.sin(motor) + (heater - bp - 10)/10
