@@ -65,7 +65,7 @@ def test(model = "GP", model_name = "GP", base_dir = "./"):
                 n+=1
                 if n == initial_points:
                     break
-    # plot_distribution(material_distribution, "Initial Point Loop")
+    # plot_distribution(material_distribution, model_name + " Initial Point Loop")
     # Perform experiment and save values in ys
     ys = []
     for p in points:
@@ -93,7 +93,8 @@ def test(model = "GP", model_name = "GP", base_dir = "./"):
         result = opt.tell(next_x, fval)
     duration = default_timer() - start
     # print(material_distribution)
-    # plot_distribution(material_distribution, "Complete Distribution")
+    # plot_distribution(material_distribution, model_name + " Complete Distribution")
+
     print("Lowest minimum of " + str(result.fun) + " at " + str(result.x))
     print_results(result, directory)
     print("Time elapsed for loop:", duration)
