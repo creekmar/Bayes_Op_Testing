@@ -21,7 +21,7 @@ def material_constraint(params):
     Dummy boiling point constraint on materials
     """
     bp = MATERIAL_TEMP[params[2]][1]
-    if bp < params[1] < bp + 20:
+    if params[1] < bp * 1.8:
         return True
     return False
 

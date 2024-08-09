@@ -7,6 +7,8 @@ Purpose: Provides mathematical functions to act as benchmark tests for any machi
 
 import math
 
+from torch import Tensor
+
 
 def rastrigan(lst):
     """
@@ -41,7 +43,8 @@ def dummy_measure(m_lst):
             material = params['material']
         else:
             motor, heater, material = params
-        bp = m_lst[material][1]
+            
+        bp = m_lst[int(material)][1]
         if material <= 3:
             return math.sin(motor) + (heater - bp - 10)/10
         else:
