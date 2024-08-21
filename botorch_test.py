@@ -23,11 +23,11 @@
 # In[1]:
 
 
+import math
 import os
 from typing import Optional
 import time
 import warnings
-from benchmarks import dummy_measure
 
 # Botorch imports
 from botorch.models import MixedSingleTaskGP
@@ -42,112 +42,120 @@ from botorch.acquisition.monte_carlo import (
 )
 from botorch.exceptions import BadInitialCandidatesWarning
 from botorch.sampling.normal import SobolQMCNormalSampler
+from botorch.utils.sampling import draw_sobol_samples
 from botorch.models.transforms import Normalize, Standardize
 
 import torch
 
 import numpy as np
 from matplotlib import pyplot as plt
+from scikit_plot import plot_optimization_trace
 
-
-MATERIAL_TEMP = [("CU", 25.0), ("TP", 50.0), ("MN", 70.0), ("SN", 90.0), ("PC", 40.0), ("DR", 40.0)]
-FUNC = dummy_measure(MATERIAL_TEMP)
+# TODO change to actual input space
+SOLV_TEMP = [("CF", 61.2), ("Tol", 110.6), ("CB", 132), ("TCB", 214.4), ("DCB", 180.1)]
+DUMMY_MATERIAL = [("CU", 25.0), ("TP", 50.0), ("MN", 70.0), ("SN", 90.0), ("PC", 40.0), ("DR", 40.0)]
+BP_SOLV = {61.2: "CF", 110.6: "TOL", 132: "CB", 214.4: "TCB", 180.1: "DCB"}
+BP = [61.2, 110.6, 132, 214.4, 180.1]
+CONCEN = [10, 15, 20]
+PRINT_GAP = [25, 50, 75, 100]
+PREC_VOL = [6, 9, 12]
+# FUNC = dummy_measure(DUMMY_MATERIAL)
 NOISE_SE = 0.5
 DEVICE = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
-# this needs to be in the shape of lows, then highs
-BOUNDS = torch.tensor([(5.0, 25.0, 0), (50.0, 100.0, 5)], device=DEVICE)
+# this needs to be in the shape of lows, then high
+DUMMY_BOUNDS = torch.tensor([(5.0, 25.0, 0), (50.0, 100.0, 5)], device=DEVICE)
+REAL_BOUNDS = torch.tensor([(0.0, 20.0), (25.0, 140.0)], device=DEVICE)
 
-# train_x, train_obj, train_con, best_observed_value = generate_initial_data()
-# print("Train_x:", train_x)
-# print("Train_obj:", train_obj)
-# print("Train_con:", train_con)
-# print("Weighted:", weighted_obj(train_x).unsqueeze(-1))
-# print("Best objserved value:", best_observed_value)
+# Speed, Temp, Concentration, print gap, vol
+CF_BOUNDS = torch.tensor([(0.01, 50.0, 10, 25, 6), (25.0, 60.0, 20, 100, 12)], device=DEVICE)
+
 
 ###############################
 # Specific for this problem
 ###############################
+def make_feature_list():
+    # f_list = [{i: v} for v in lst]
+    f_list = []
+    for c in CONCEN:
+        for g in PRINT_GAP:
+            for v in PREC_VOL:
+                f_list.append({2: c, 3: g, 4: v})
+
+    return f_list
+
+# print(make_feature_list())
+
+
+
+def dummy_measure(params):
+    motor, heater, conc, gap, vol = params
+    return -(gap*motor +conc*pow(heater, 2) + vol)
+
+
 def measure(data):
     result = torch.zeros(len(data))
     for i in range(len(data)):
-        result[i] = FUNC(data[i])
+        result[i] = dummy_measure(data[i])
     return result
 
-def material_constraint(params):
-    """
-    Dummy boiling point constraint on materials
-    """
-    bp = MATERIAL_TEMP[int(params[2])][1]
-    if params[1] < bp * 1.8:
-        return True
-    return False
+def transform(values):
+    def f(num):
+        return values[int(num)]
+    return f
 
-
-
-# TODO Figure out wtf this is
-def obj_callable(Z: torch.Tensor, X: Optional[torch.Tensor] = None):
-    # get 0th column
-    return Z[..., 0]
-
-
-def constraint_callable(Z):
-    # get 1st column
-    return Z[..., 1]
-
-
-# define a feasibility-weighted objective for optimization
-constrained_obj = ConstrainedMCObjective(
-    objective=obj_callable,
-    constraints=[constraint_callable],
-)
-
-
-###################
-# Generate data
-###################
 
 def generate_init_data(n=10):
-    # TODO add constraints, make more general
-    train_X = torch.cat(
-            [torch.rand(n, 1) * 45+5, torch.rand(n, 1) * 75+25, 
-            torch.randint(6, (n, 1))], dim=-1
-            )
-    
+    b = torch.tensor([(0.01, 50.0, 0, 0, 0), (25.0, 60.0, 2, 3, 2)], device=DEVICE)
+    raw_samples = draw_sobol_samples(bounds = b, n=1, q=n)
+    train_X = raw_samples.flatten(0,1)
+
+    # have to round and apply
+    rounded = train_X[:,2:].round()
+    rounded[:,0].apply_(transform(CONCEN))
+    rounded[:,1].apply_(transform(PRINT_GAP))
+    rounded[:,2].apply_(transform(PREC_VOL))
+    train_X[:, 2:] = rounded
     exact_obj = measure(train_X).unsqueeze(-1)  # add output dimension
     train_Y = exact_obj + NOISE_SE * torch.randn_like(exact_obj)
     best_observed_value = train_Y.max().item()
     return train_X, train_Y, best_observed_value
 
+
+###################
+# ML FUNCS
+###################
+    
 def initialize_model(train_x, train_obj, state_dict=None):
     # combine into a multi-output GP model
-    model = MixedSingleTaskGP(train_x, train_obj, [2], outcome_transform=Standardize(m=1), input_transform=Normalize(d=3))
+    model = MixedSingleTaskGP(train_x, train_obj, [2,3,4], outcome_transform=Standardize(m=1), input_transform=Normalize(d=5))
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     # load state dict if it is passed
     if state_dict is not None:
         model.load_state_dict(state_dict)
     return mll, model
 
-def optimize_acqf_and_get_observation(acq_func, batch_size=3, num_restarts=10, raw_samples=64):
+def optimize_acqf_and_get_observation(acq_func, batch_size=1, num_restarts=10, raw_samples=64):
     # Optimizes the acquisition function, and returns a new candidate and a noisy observation.
     # optimize
-    found = False
-    while not found:
-        candidates, _ = optimize_acqf_mixed(
-            acq_function=acq_func,
-            bounds=BOUNDS,
-            q=batch_size,
-            num_restarts=num_restarts,
-            raw_samples=raw_samples,  # used for intialization heuristic
-            fixed_features_list=[{2: v} for v in range(6)],
+    feat_list = make_feature_list()
+    candidates, _ = optimize_acqf_mixed(
+        acq_function=acq_func,
+        bounds=CF_BOUNDS,
+        q=batch_size,
+        num_restarts=num_restarts,
+        raw_samples=raw_samples,  # used for intialization heuristic
+        fixed_features_list=feat_list,
+        # TODO later add in solvent
+        # inequality_constraints=[(1, 1/1.8, BP)],
+        #batch_initial_conditions=gen_batch_conditions(),
+        # options={"batch_limit": 1, "maxiter": 200}
         )
-        # TODO figure out constraints
-        # if material_constraint(candidates.detach()):
-        #     found = True
-        found = True
-        
+
+   
     # observe new values
     new_x = candidates.detach()
+    print("\tNew Candidate:", new_x)
     exact_obj = measure(new_x).unsqueeze(-1)  # add output dimension
     new_obj = exact_obj + NOISE_SE * torch.randn_like(exact_obj)
     return new_x, new_obj
@@ -170,48 +178,34 @@ def optimize_acqf_and_get_observation(acq_func, batch_size=3, num_restarts=10, r
 def run_optimization():
     warnings.filterwarnings("ignore", category=BadInitialCandidatesWarning)
     warnings.filterwarnings("ignore", category=RuntimeWarning)
-    N_BATCH = 20
+    N_RUNS = 50
     MC_SAMPLES = 256
 
     verbose = True
 
-    best_observed_ei, best_observed_nei  = [], []
-
+    best_observed_nei, iteration_list  = [], []
     # call helper functions to generate initial training data and initialize model
     (
-        train_x_ei,
-        train_obj_ei,
-        best_observed_value_ei,
+        train_x_nei,
+        train_obj_nei,
+        best_observed_value_nei,
     ) = generate_init_data(n=10)
-    mll_ei, model_ei = initialize_model(train_x_ei, train_obj_ei)
-
-    train_x_nei, train_obj_nei= train_x_ei, train_obj_ei
-    best_observed_value_nei = best_observed_value_ei
     mll_nei, model_nei = initialize_model(train_x_nei, train_obj_nei)
 
-    best_observed_ei.append(best_observed_value_ei)
     best_observed_nei.append(best_observed_value_nei)
 
-    # TODO get rid of batched runs
-    # run N_BATCH rounds of BayesOpt after the initial random batch
-    for iteration in range(1, N_BATCH + 1):
+    # run N_RUNS runs of BayesOpt after the initial random data
+    for iteration in range(1, N_RUNS + 1):
 
         t0 = time.monotonic()
 
         # fit the models
-        fit_gpytorch_mll(mll_ei)
         fit_gpytorch_mll(mll_nei)
 
         # define the qEI and qNEI acquisition modules using a QMC sampler
         qmc_sampler = SobolQMCNormalSampler(sample_shape=torch.Size([MC_SAMPLES]))
 
         # for best_f, we use the best observed noisy values as an approximation
-        qEI = qExpectedImprovement(
-            model=model_ei,
-            best_f=(train_obj_ei * (train_obj_ei <= 0).to(train_obj_ei)).max(),
-            sampler=qmc_sampler,
-        )
-
         qNEI = qNoisyExpectedImprovement(
             model=model_nei,
             X_baseline=train_x_nei,
@@ -219,55 +213,80 @@ def run_optimization():
         )
 
         # optimize and get new observation
-        new_x_ei, new_obj_ei = optimize_acqf_and_get_observation(qEI)
         new_x_nei, new_obj_nei = optimize_acqf_and_get_observation(qNEI)
 
         # update training points
-        train_x_ei = torch.cat([train_x_ei, new_x_ei])
-        train_obj_ei = torch.cat([train_obj_ei, new_obj_ei])
-
         train_x_nei = torch.cat([train_x_nei, new_x_nei])
         train_obj_nei = torch.cat([train_obj_nei, new_obj_nei])
 
         # update progress
-        best_value_ei = train_obj_ei.max().item()
         best_value_nei = train_obj_nei.max().item()
-        best_observed_ei.append(best_value_ei)
         best_observed_nei.append(best_value_nei)
-        # print("HELP:", torch.argmax(train_obj_ei), torch.argmax(train_obj_ei).item())
 
-        best_x_ei = train_x_ei[torch.argmax(train_obj_ei).item()]
         best_x_nei = train_x_nei[torch.argmax(train_obj_nei).item()]
 
         # reinitialize the models so they are ready for fitting on next iteration
         # use the current state dict to speed up fitting
-        mll_ei, model_ei = initialize_model(
-            train_x_ei,
-            train_obj_ei,
-            model_ei.state_dict(),
-        )
         mll_nei, model_nei = initialize_model(
             train_x_nei,
             train_obj_nei,
             model_nei.state_dict(),
         )
+        # model_nei.state_dict()
 
         t1 = time.monotonic()
 
         if verbose:
             print(
-                f"\nBatch {iteration:>2}: \n\tqEI Best Value {best_value_ei:>4.2f}"
-                f" at {best_x_ei.tolist()}\n\t"
+                f"\nRUN {iteration:>2}: \n\t"
                 f"qNEI Best Value: {best_value_nei:>4.2f} at {best_x_nei.tolist()}\n\t"
-                f"Time = {t1-t0:>4.2f}.",
+                f"Time = {t1-t0:>4.2f}.\n",
                 end="",
             )
         else:
             print(".", end="")
 
+        # NOTE: there were 13 in the list
+    # TODO figure out how to save STATE_DICT
+    torch.save(model_nei.state_dict(), 'model_state_dict.pth')
+    for i in range(len(best_observed_nei)):
+        iteration_list.append(i)
+    plot_optimization_trace(iteration_list, best_observed_nei)
+
 
 if __name__ == "__main__":
     run_optimization()
+    
 
 
 # """
+####################################
+# GRAVEYARD
+####################################
+
+# def gen_batch_conditions(num=10):
+#     mat = 0
+#     count = 0
+#     total_samples = torch.empty(1, num,3)
+#     while count < num:
+#         # temp constraints
+#         bp = DUMMY_MATERIAL[mat][1]
+#         temp_high = min(100, bp*1.8)
+#         b = torch.tensor([(5.0, 25.0, mat), (50.0, temp_high, mat)], device=DEVICE)
+
+#         # for some reason draw_sobol_samples adds an extra dimension so need to flatten
+#         raw_samples = draw_sobol_samples(bounds = b, n=1, q=1)
+#         samples = raw_samples.flatten(0,1)
+#         total_samples[0,count] = samples
+#         count += 1
+
+#         # have material change every time
+#         mat = (mat + 1)%6
+#     return total_samples
+
+# def generate_dummy_init_data(n=10):
+#     train_X = gen_batch_conditions(n).flatten(0,1)
+#     exact_obj = measure(train_X).unsqueeze(-1)  # add output dimension
+#     train_Y = exact_obj + NOISE_SE * torch.randn_like(exact_obj)
+#     best_observed_value = train_Y.max().item()
+#     return train_X, train_Y, best_observed_value
