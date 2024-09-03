@@ -63,7 +63,7 @@ def make_feature_list():
 def dummy_measure(params):
     """@return dummy measure for the parameters motor speed, heater,
        concentration, printing gap, and precursor volume.
-       An upside down parabola to maximize"""
+       An upside down parabola to minimize"""
     motor, heater, conc, gap, vol = params
     return (gap*motor +conc*pow(heater, 2) + vol)
 
