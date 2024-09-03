@@ -78,14 +78,14 @@ def plt4d(f, data=None, n=100, directory="./"):
     print(df)
     df.to_csv("4d_objective.csv")
 
-def plot_optimization_trace(iterations, objective_values):
+def plot_optimization_trace(iterations, objective_values, plot_file='Optimization_Trace'):
     plt.figure(figsize=(10, 6))
     plt.plot(iterations, objective_values, marker='o', linestyle='-', color='b')
     plt.xlabel('Iteration')
     plt.ylabel('Objective Function Value')
     plt.title('Optimization Trace')
     plt.grid(True)
-    plt.savefig("Optimization_Trace")
+    plt.savefig(plot_file)
 
 def print_results(result, directory = "./"):
     """
