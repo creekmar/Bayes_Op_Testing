@@ -187,6 +187,7 @@ def run_optimization(n_start_runs=10, n_loop_runs=50, mc_samples=256, maximize =
     warnings.filterwarnings("ignore", category=RuntimeWarning)
 
     best_observed_nei, iteration_list  = [], []
+    time_list = torch.zeros(n_loop_runs+n_start_runs, 1)
     # call helper functions to generate initial training data and initialize model
     (
         train_x_nei,
@@ -241,6 +242,7 @@ def run_optimization(n_start_runs=10, n_loop_runs=50, mc_samples=256, maximize =
         )
 
         t1 = time.monotonic()
+        time_list[iteration-1+n_start_runs] = t1-t0
 
         if verbose:
             print(
@@ -260,10 +262,11 @@ def run_optimization(n_start_runs=10, n_loop_runs=50, mc_samples=256, maximize =
     plot_optimization_trace(iteration_list, best_observed_nei)
 
     # save data as csv
-    array = torch.cat((train_x_nei, train_obj_nei), 1).numpy()
-    col_names = ["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Objective"]
+    array = torch.cat((train_x_nei, train_obj_nei, time_list), 1).numpy()
+    col_names = ["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Objective", "Time"]
     df = pd.DataFrame(array, columns=col_names)
     df.to_csv(data_file)
+    print("Average time:", time_list.sum().item()/(n_loop_runs+n_start_runs))
     
 
 
