@@ -13,6 +13,8 @@ CB - chlorobenzene - 132                A=4.11083   B=1435.675  C=-55.124
 TCB - trichlorobenzene - 214.4          A=4.64002   B=2110.983	C=-30.721
 DCB - dichlorobenzene - 180.1           A=4.19518   B=1649.55   C=-59.836
 
+National Institute of Standards and Technology. NIST. (2024, August 29). https://www.nist.gov/ 
+
 Not above 80-85% of boiling point
 
 printing speed : more closely parse <1mm/s region and a bit far away at >1mm/s region. 
@@ -28,10 +30,7 @@ DCB (20, 140)
 """
 
 from math import log
-from benchmarks import dummy_measure
 import matplotlib.pyplot as plt
-import numpy as np
-from scipy.stats import qmc
 
 CONSTANTS = {"CF": [4.56992, 1486.455, -8.612], "TOL": [4.08245, 1346.382, -53.508],
              "CB": [4.11083, 1435.675, -55.124], "TCB": [4.64002, 2110.983, -30.721],
@@ -39,7 +38,6 @@ CONSTANTS = {"CF": [4.56992, 1486.455, -8.612], "TOL": [4.08245, 1346.382, -53.5
 CONCEN = [10, 15, 20]
 PRINT_GAP = [25, 50, 75, 100]
 PREC_VOL = [6, 9, 12]
-NOISE_SE = 0.5
 
 
 def make_pressure_from_temp_func(a, b, c):
@@ -151,12 +149,24 @@ def calc_pressure_bounds(solvent, temp_window):
         high = 1
     return (low, high)
 
+def get_all_solvent_bounds():
+    """
+    Get a dictionary of the solvnt temperature bounds relating 
+    solvent name to solvent temperature bound in C
+    """
+    bound_dict = {}
+    for solvent in CONSTANTS:
+        b = calc_temp_bounds(solvent, (0, .9), (20, 140))
+        bound_dict[solvent] = b
+    return bound_dict
+
 
 if __name__ == "__main__":
-    for solvent in CONSTANTS:
+    # for solvent in CONSTANTS:
         # this is what we're using for the problem
-        print(solvent, calc_temp_bounds(solvent, (0, .9), (20, 140)))
+        # print(solvent, calc_temp_bounds(solvent, (0, .9), (20, 140)))
         # print(solvent, ":", calc_pressure_bounds(solvent, (20, 140)))
+    print(get_all_solvent_bounds())
 
     # constants = [4.20772, 1233.129, -40.953]
     # other_constants = [4.56992, 1486.455, -8.612]

@@ -5,11 +5,13 @@ Purpose: Some helper functions to plot standardized specific results for data te
 """
 
 import random
-from matplotlib import cm, pyplot as plt, colors
-from matplotlib.axes import Axes
+from matplotlib import cm, pyplot as plt
 import numpy as np
 from skopt.plots import plot_convergence, plot_objective
 import pandas as pd
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+import umap
 
 MATERIAL_TEMP = [("CU", 25.0), ("TP", 50.0), ("MN", 70.0), ("SN", 90.0), ("PC", 40.0), ("DR", 40.0)]
 
@@ -87,6 +89,55 @@ def plot_optimization_trace(iterations, objective_values, plot_file='Optimizatio
     plt.grid(True)
     plt.savefig(plot_file)
 
+def graph_pca(df, dataset_name, directory = "./"):
+
+    # Standardize the data
+    scaler = StandardScaler()
+    X_standardized = scaler.fit_transform(df)
+
+    # Apply PCA
+    pca = PCA(n_components=2)  # Reduce to 2 dimensions for visualization
+    X_pca = pca.fit_transform(X_standardized)
+
+    # Create a DataFrame for easy plotting
+    df_pca = pd.DataFrame(data=X_pca, columns=['Principal Component 1', 'Principal Component 2'])
+    # df_pca['Target'] = y
+
+    # Plot the results
+    plt.figure(figsize=(8, 6))
+    # scatter = plt.scatter(df_pca['Principal Component 1'], df_pca['Principal Component 2'], c=df_pca['Target'], cmap='viridis', alpha=0.7)
+    scatter = plt.scatter(df_pca['Principal Component 1'], df_pca['Principal Component 2'], alpha=0.7)
+    # plt.colorbar(scatter, label='Target Class')
+    plt.xlabel('Principal Component 1')
+    plt.ylabel('Principal Component 2')
+    plt.title(dataset_name)
+    plt.savefig(directory + "PCA_" + dataset_name)
+    plt.show()
+
+    # Print explained variance
+    # print(f"Explained variance ratio of each component: {pca.explained_variance_ratio_}")
+    # print(f"Total explained variance: {np.sum(pca.explained_variance_ratio_)}")
+
+def graph_umap(df, dataset_name, directory = "./"):
+    # Initialize UMAP
+    umap_model = umap.UMAP(n_neighbors=5, min_dist=0.1, metric='euclidean', random_state=1, n_jobs=1)
+
+    # Fit and transform the data
+    umap_result = umap_model.fit_transform(df)
+
+    # Create DataFrame for UMAP results
+    umap_df = pd.DataFrame(umap_result, columns=['UMAP1', 'UMAP2'])
+
+    # Plot the results
+    plt.figure(figsize=(8, 6))
+    plt.scatter(umap_df['UMAP1'], umap_df['UMAP2'], c='blue', edgecolor='k')
+    plt.title('UMAP Projection ' + dataset_name)
+    plt.xlabel('UMAP1')
+    plt.ylabel('UMAP2')
+    plt.grid(True)
+    plt.savefig(directory + "UMAP_" + dataset_name)
+    plt.show()
+
 def print_results(result, directory = "./"):
     """
     Print the testing results of scikit-optimize. Save convergence and objective plot
@@ -109,3 +160,6 @@ def print_results(result, directory = "./"):
     # input("Press enter to see fig 2")
     plt.savefig(directory + "objective_plot")
     plt.show()
+
+if __name__ == "__main__":
+    print()

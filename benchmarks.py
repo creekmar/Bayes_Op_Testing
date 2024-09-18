@@ -7,9 +7,6 @@ Purpose: Provides mathematical functions to act as benchmark tests for any machi
 
 import math
 
-from torch import Tensor
-
-
 def rastrigan(lst):
     """
     Gives the output of the rastrigan function given the inputs. Can be any dimension.
@@ -35,21 +32,13 @@ def rosenbrock(lst):
 def mix(lst):
     return rastrigan(lst) + rosenbrock(lst)
 
-def dummy_measure(m_lst):
-    def f(params):
-        if isinstance(params, dict):
-            motor = params['motor']
-            heater = params['heater']
-            material = params['material']
-        else:
-            motor, heater, material = params
-            
-        bp = m_lst[int(material)][1]
-        if material <= 3:
-            return math.sin(motor) + (heater - bp - 10)/10
-        else:
-            return math.sin(motor) - abs((heater - bp - 10)/10)
-    return f
+def dummy_measure(params):
+    """@return dummy measure for the parameters motor speed, heater,
+       concentration, printing gap, and precursor volume.
+       An parabola to minimize
+       6.25 is the minimum"""
+    motor, heater, conc, gap, vol, bp = params
+    return (gap*motor +conc*pow(bp-heater, 2) + vol)
 
 if __name__ == "__main__":
     print(rastrigan([0,1]))
