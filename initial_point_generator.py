@@ -16,21 +16,41 @@ import umap
 from scipy.stats import gaussian_kde
 from timeit import default_timer
 
+from constants import make_temp_from_pressure_f, get_all_press_solv_bounds
+
 # discrete/categorical input space
-SOLV_TEMP = [("CF", 61.2), ("Tol", 110.6), ("CB", 132), ("TCB", 214.4), ("DCB", 180.1)]
-SOLV_NAMES = ["CF", "TOL", "CB", "TCB", "DCB"]
-BP_SOLV = {61.2: "CF", 110.6: "TOL", 132: "CB", 214.4: "TCB", 180.1: "DCB"}
-BP = [61.2, 110.6, 132, 214.4, 180.1]
+SOLV_NAMES = ["CF", "TOL", "CB", "mXY", "MES"]
+BP = [61.2, 110.6, 132, 174.1, 180.1]
 CONCEN = [10, 15, 20]
 PRINT_GAP = [25, 50, 75, 100]
 PREC_VOL = [6, 9, 12]
+MOTOR_SPEEDS_9 = [0.01, 0.02586, 0.066874, 0.17, 0.44721, 1.1565, 2.99, 7.734, 20]
+MOTOR_SPEEDS_10 = [0.01, 0.02327, 0.054145, 0.126, 0.2932, 0.6822, 1.5874, 3.69375, 8.595, 20]
+TEMP_CHOICES = {"CF": [25,41.29986747], "TOL": [25,30.45310597,45.26606599,68.7105251,87.50711471], 
+                    "CB": [25,47.25710066,62.88238474,87.59268613,107.3866381], 
+                    "mXY": [25,53.95836057,69.73158755,94.65825633,114.6099936],
+                    "MES": [25,75.79225276,92.31476572,118.3802477,139.2036371]}
+PRESSURE_CHOICES = {"CF": [0.25895711, 0.5], "TOL": [0.037929005, 0.05, 0.1, 0.25895711, 0.5], 
+                    "CB": [0.015971088, 0.05, 0.1, 0.25895711, 0.5], 
+                    "mXY": [0.011050063, 0.05, 0.1, 0.25895711, 0.5],
+                    "MES": [0.003221155, 0.05, 0.1, 0.25895711, 0.5]}
 SEED = 42
 
 # Speed, Temp, Concentration, print gap, vol, solvent
-SPACE_BOUNDS = [(0.01, 20, 10, 25, 6, 61.2), (25.0, 140, 20, 100, 12, 180.1)]
-SPACE = [(0.1,25.0),(20.0,140.0), CONCEN, PRINT_GAP, PREC_VOL, BP]
-SOLV_TEMP_BOUNDS = {'CF': (20, 57.50681423147216), 'TOL': (20, 106.50003696848108), 'CB': (20, 127.37151737701168), 'TCB': (20, 140), 'DCB': (20, 140)}
+SPACE = [(0.1,20.0),(25.0,140.0), CONCEN, PRINT_GAP, PREC_VOL, BP]
+SOLV_TEMP_BOUNDS = {'CF': (25, 41.2), 'TOL': (25, 90.6), 'CB': (25, 112), 'DEC': (25, 140),'DCB': (25, 140)}
+SOLV_PRESS_BOUNDS = get_all_press_solv_bounds(25, 140)
 
+
+def generate_logarithmic_data(start, end, num_points, random = False):
+    """Generates logarithmic spaced points between start and end"""
+    if random: 
+        random_log_values = np.random.uniform(np.log10(start), np.log10(end), num_points)
+        data_points = 10 ** random_log_values
+    else:
+        # generate evenly spaced points
+        data_points = np.logspace(np.log10(start), np.log10(end), num=num_points)
+    return data_points
 
 def get_sample_space_points(brute_force = True, n_points = 500, m_increment = 2, t_increment = 10):
     """
@@ -78,7 +98,7 @@ def get_sample_space_points(brute_force = True, n_points = 500, m_increment = 2,
                 points.append(p)
     return points
 
-def get_sobol_initial_points(n=14, use_BP=False):
+def get_sobol_initial_points(n=14, use_BP=False, use_press = False):
     """
     Gets sobol generated points in the space [Speed, Temp, Concentration, print gap, vol, solvent]
     The seed count is fixed so the same points will be generated each time
@@ -98,7 +118,10 @@ def get_sobol_initial_points(n=14, use_BP=False):
         # so we don't keep getting warnings, sobol sampler initialized here
         initial_point_gen = sampler.Sobol()
         solv = count%5
-        temp_bounds = SOLV_TEMP_BOUNDS[SOLV_NAMES[solv]]
+        if use_press:
+            temp_bounds = SOLV_PRESS_BOUNDS[SOLV_NAMES[solv]]
+        else:
+            temp_bounds = SOLV_TEMP_BOUNDS[SOLV_NAMES[solv]]
         if (n//5)*5 + count < n:  
             n_per_solv = (n//5)+1
         else:
@@ -117,21 +140,90 @@ def get_sobol_initial_points(n=14, use_BP=False):
         
     return points
 
+def get_biased_initial_points(n=30):
+    # get all combinations of volume, gap, and concentration
+    # prec vol
+    combinations = []
+    for v in range(3):
+        # print gap
+        for g in range(4):
+            # concentration
+            for c in range(3):     
+                combinations.append([CONCEN[c], PRINT_GAP[g], PREC_VOL[v]])
+    
+    choice_list = np.random.choice(len(combinations), n, replace=False)
+    choice_count = 0
+    # getting points per solvent
+    points = []
+    for s in range(5):
+        if (n//5)*5 + s < n:  
+            n_per_solv = (n//5)+1
+        else:
+            n_per_solv = n//5
+        # we want motor speeds more forcused on the lower values
+        m_array = generate_logarithmic_data(0.01, 20, n_per_solv)
+        # we want temperatures evenly spaced by the pressure bounds
+        bounds = SOLV_PRESS_BOUNDS[SOLV_NAMES[s]]
+        t_array = np.random.uniform(bounds[0], bounds[1], n_per_solv)
+
+        count = 0
+        while count < n_per_solv:
+           
+            points.append([m_array[count]] + [t_array[count]] + combinations[choice_list[choice_count]] + [s])
+            choice_count+=1
+            count+=1
+
+    # fixing dataframe of data to be rounded and solvent names to replace numbers
+    # and calculating temperature to replace pressure
+    df = pd.DataFrame(points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
+    # df = pd.DataFrame(points, columns=["Solvent", "Pressure"])
+    df["Motor Speed"] = df["Motor Speed"].round(2)
+    df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
+    for solv in SOLV_NAMES:
+        f = make_temp_from_pressure_f(solv)
+        df.loc[df['Solvent'] == solv, 'Temperature'] = df.loc[df['Solvent'] == solv, 'Temperature'].apply(f).subtract(273.15)
+    df['Temperature'] = df['Temperature'].round(1)
+    return df
+
 if __name__ == "__main__":
+    df = get_biased_initial_points()
+    df.to_csv('30Points.csv')
+    print(df)
+    exit()
+
+##############################
+# Original plotting 
+##############################
+
+"""
     start = default_timer()
-    n_points = 14
-    our_points = get_sobol_initial_points(n_points)
+    n_points = 30
+    our_points = get_sobol_initial_points(n_points, use_press=True)
     model="SOBOL"
+
+    # TEST
+    df = pd.DataFrame(our_points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
+    df["Motor Speed"] = df["Motor Speed"].round(1)
+    df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
+    
+    for solv in SOLV_NAMES:
+        f = make_temp_from_pressure_f(solv)
+        df.loc[df['Solvent'] == solv, 'Temperature'] = df.loc[df['Solvent'] == solv, 'Temperature'].apply(f).subtract(273.15)
+        
+    print(df)
+    # print(df)
     # we want <10k data points
-    space_points = get_sample_space_points(True, 500, 4, 20)
+    # space_points = get_sample_space_points(True, 500, 4, 20)
     # print(len(space_points))
-    # exit()
+    df.to_csv("30points.csv")
+    exit()
+
     all_points = our_points+space_points
 
     # round and standardize all points
     df = pd.DataFrame(all_points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
     df["Motor Speed"] = df["Motor Speed"].round(1)
-    df["Temperature"] = df["Temperature"].round(1)
+    # df["Temperature"] = df["Temperature"].round(1)
     scaler = StandardScaler()
     X_standardized = scaler.fit_transform(df)
 
@@ -213,3 +305,4 @@ if __name__ == "__main__":
     plt.show()
 
     print("Time elapsed:", default_timer()- start)
+# """
