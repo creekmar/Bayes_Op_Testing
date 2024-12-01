@@ -5,6 +5,7 @@ Purpose: Generate initial sobol points for lab automation problem and plot them 
          PCA and UMAP to show how well the points are spread out on the sample space
 """
 
+import random
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
@@ -19,31 +20,130 @@ from timeit import default_timer
 from constants import make_temp_from_pressure_f, get_all_press_solv_bounds
 
 # discrete/categorical input space
-SOLV_NAMES = ["CF", "TOL", "CB", "mXY", "MES"]
-BP = [61.2, 110.6, 132, 174.1, 180.1]
-CONCEN = [10, 15, 20]
-PRINT_GAP = [25, 50, 75, 100]
+SOLV_NAMES = ["CF", "CB", "CB:A1", "CB:A2", "CB:A3"]
+BP = [61.2, 131.2, 133.4, 135.6, 137.8]
+CONCEN = [5, 10]
+PRINT_GAP = [50, 100]
 PREC_VOL = [6, 9, 12]
-MOTOR_SPEEDS_9 = [0.01, 0.02586, 0.066874, 0.17, 0.44721, 1.1565, 2.99, 7.734, 20]
-MOTOR_SPEEDS_10 = [0.01, 0.02327, 0.054145, 0.126, 0.2932, 0.6822, 1.5874, 3.69375, 8.595, 20]
-TEMP_CHOICES = {"CF": [25,41.29986747], "TOL": [25,30.45310597,45.26606599,68.7105251,87.50711471], 
-                    "CB": [25,47.25710066,62.88238474,87.59268613,107.3866381], 
-                    "mXY": [25,53.95836057,69.73158755,94.65825633,114.6099936],
-                    "MES": [25,75.79225276,92.31476572,118.3802477,139.2036371]}
-PRESSURE_CHOICES = {"CF": [0.25895711, 0.5], "TOL": [0.037929005, 0.05, 0.1, 0.25895711, 0.5], 
-                    "CB": [0.015971088, 0.05, 0.1, 0.25895711, 0.5], 
-                    "mXY": [0.011050063, 0.05, 0.1, 0.25895711, 0.5],
-                    "MES": [0.003221155, 0.05, 0.1, 0.25895711, 0.5]}
+MOTOR_SPEEDS = [0.01, 0.0355, 0.126, 0.4472, 1.587, 5.635, 20]
+TEMP_CHOICES = {"CF": [25, 41.3], "CB": [25, 47.3, 62.9, 87.6, 107.4], "CB:A1": [25, 47.3, 62.9, 87.6, 107.4],
+                "CB:A2": [25, 47.3, 62.9, 87.6, 107.4], "CB:A3": [25, 47.3, 62.9, 87.6, 107.4]}
+PRESSURE_CHOICES = {"CF": [0.258957, 0.5], "CB": [0.015971, 0.05, 0.1, 0.258957, 0.5],
+                    "CB:A1": [0.015971, 0.05, 0.1, 0.258957, 0.5], "CB:A2": [0.015971, 0.05, 0.1, 0.258957, 0.5],
+                    "CB:A3": [0.015971, 0.05, 0.1, 0.258957, 0.5]}
 SEED = 42
 
 # Speed, Temp, Concentration, print gap, vol, solvent
-SPACE = [(0.1,20.0),(25.0,140.0), CONCEN, PRINT_GAP, PREC_VOL, BP]
-SOLV_TEMP_BOUNDS = {'CF': (25, 41.2), 'TOL': (25, 90.6), 'CB': (25, 112), 'DEC': (25, 140),'DCB': (25, 140)}
+SPACE = [(0.01,20.0),(25.0,140.0), CONCEN, PRINT_GAP, PREC_VOL, BP]
+SOLV_TEMP_BOUNDS = {'CF': (25, 41.2), 'CB': (25, 112), 'CB:A1': (25, 112), 'CB:A2': (25, 112), 'CB:A3': (25, 112)}
 SOLV_PRESS_BOUNDS = get_all_press_solv_bounds(25, 140)
 
+def get_all_discrete_points() -> set:
+    """
+    If the problem is discrete, this gets all points in the sample space
+    [Speed, Temp, Concentration, print gap, vol, solvent]
+    And returns it as a set
+    """
+    points = set()
+    for s in SOLV_NAMES:
+        for c in CONCEN:
+            for g in PRINT_GAP:
+                for v in PREC_VOL:
+                    for m in MOTOR_SPEEDS:
+                        for t in TEMP_CHOICES[s]:
+                            points.add((m, t,c,g,v,s))
+    return points
+
+def discrete_sample_set(n: int, og_lists: list[list], sample: set = set()):
+    """
+    A half brute force way to pick samples in a discrete sample
+    space, where each sample chosen is as distinct from the 
+    previous samples chosen as possible
+    @param n: number of points to generate
+    @param og_lists: list of each discrete sample space
+    @param sample: the set of samples that have already been picked. 
+        Default will be a new set
+    @return a list of points chosen
+    """
+
+    # s_lists are the "bags" we'll pick options from
+    # c_lists are for the rebound if we accidentally pick a combination already in sample
+    s_lists = [sublist[:] for sublist in og_lists]
+    c_lists = [sublist[:] for sublist in og_lists]
+
+    # max unique combinations
+    max_num = 1
+    for sublist in og_lists:
+        max_num *= len(sublist)
+
+    count = 0
+    p_list = []
+
+    while count < n:
+        # clear sample lists if we've already picked all
+        # available combinations
+        if (len(sample) == max_num):
+            print("CLEAR")
+            sample.clear()
+        point = []
+
+        # make a semi-random point
+        for i in range(len(og_lists)):
+            sublist = s_lists[i]
+            # restock
+            if len(sublist) == 0:
+                s_lists[i] = og_lists[i].copy()
+                sublist = s_lists[i]
+            c = sublist.pop(random.randint(0, len(sublist)-1))
+            point.append(c)
+        point = tuple(point)
+
+        # add point if in sample
+        if point not in sample:
+            p_list.append(point)
+            sample.add(point)
+            count +=1
+            for i in range(len(og_lists)):
+                c_lists[i] = s_lists[i]
+        else:
+            # need to resample what we had before
+            for i in range(len(og_lists)):
+                s_lists[i] = c_lists[i]
+            
+    return p_list
+
+def get_discrete_biased_initial_points(n=30):
+    """
+    Get evenly spaced points from the discrete sample space
+    [Speed, Temp, Concentration, print gap, vol, solvent]
+    @return a dataframe of the points
+    """
+    c_set = set()
+    # getting points per solvent
+    points = []
+    num_solv = len(SOLV_NAMES)
+    for s in range(num_solv):
+        if (n//num_solv)*num_solv + s < n:  
+            n_per_solv = (n//num_solv)+1
+        else:
+            n_per_solv = n//num_solv
+        
+        choice_list = discrete_sample_set(n_per_solv, [MOTOR_SPEEDS, TEMP_CHOICES[SOLV_NAMES[s]], CONCEN, PRINT_GAP, PREC_VOL], c_set)
+        points += [list(point) + [s] for point in choice_list]
+    
+    # fixing dataframe of data to be rounded and solvent names to replace numbers
+    df = pd.DataFrame(points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
+    df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
+    return df
+
+
+#################################
+# Speed and Temp are Continuous #
+#################################
 
 def generate_logarithmic_data(start, end, num_points, random = False):
-    """Generates logarithmic spaced points between start and end"""
+    """
+    Generates logarithmic spaced points between start and end"""
     if random: 
         random_log_values = np.random.uniform(np.log10(start), np.log10(end), num_points)
         data_points = 10 ** random_log_values
@@ -55,6 +155,8 @@ def generate_logarithmic_data(start, end, num_points, random = False):
 def get_sample_space_points(brute_force = True, n_points = 500, m_increment = 2, t_increment = 10):
     """
     This is a brute force approach to show the data points of all points in the sample space
+    [Speed, Temp, Concentration, print gap, vol, solvent]
+    where speed and temp are continous
     To reduce the time, increase the motor and temperature increments so there are less points
     To get more points, decrease the motor and temperature increments
     @param: brute force: boolean to determine whether to partisan it ourselves or to draw random samples
@@ -69,13 +171,13 @@ def get_sample_space_points(brute_force = True, n_points = 500, m_increment = 2,
     points = []
     if brute_force:
         # # the solvent
-        for s in range(5):
+        for s in range(len(SOLV_NAMES)):
             # prec vol
-            for v in range(3):
+            for v in range(len(PREC_VOL)):
                 # print gap
-                for g in range(4):
+                for g in range(len(PRINT_GAP)):
                     # concentration
-                    for c in range(3):
+                    for c in range(len(CONCEN)):
                         temp_bounds = SOLV_TEMP_BOUNDS[SOLV_NAMES[s]]
                         t = temp_bounds[0]
                         while t <= temp_bounds[1]:
@@ -98,13 +200,15 @@ def get_sample_space_points(brute_force = True, n_points = 500, m_increment = 2,
                 points.append(p)
     return points
 
-def get_sobol_initial_points(n=14, use_BP=False, use_press = False):
+def get_continuous_sobol_initial_points(n=14, use_BP=False, use_press = False):
     """
     Gets sobol generated points in the space [Speed, Temp, Concentration, print gap, vol, solvent]
+    where speed and temperature are continuous
     The seed count is fixed so the same points will be generated each time
     Solvent will always have an even amount of points between each different solvent
     @param: n: number of points to generate
     @param: use_BP: whether to replace solvent number with its boiling points
+    @param: use_press: whether to use pressure or temperature
     @return: points in a list 
     """
     
@@ -140,7 +244,19 @@ def get_sobol_initial_points(n=14, use_BP=False, use_press = False):
         
     return points
 
-def get_biased_initial_points(n=30):
+def get_continous_biased_initial_points(n=30, use_BP=False, use_press = False):
+    """
+    Gets semi-biased generated points in the space 
+    [Speed, Temp, Concentration, print gap, vol, solvent]
+    where speed and temperature are continuous 
+    The speed is uniformly distributed, while the temperature
+    is evenly spaced logarithmically by pressure
+    The concentration, print gap, vol, and solvent are chosen randomly
+    @param: n: number of points to generate
+    @param: use_BP: whether to replace solvent number with its boiling points
+    @param: use_press: whether to use pressure or temperature
+    @return: points in a list 
+    """
     # get all combinations of volume, gap, and concentration
     # prec vol
     combinations = []
@@ -174,62 +290,61 @@ def get_biased_initial_points(n=30):
             count+=1
 
     # fixing dataframe of data to be rounded and solvent names to replace numbers
-    # and calculating temperature to replace pressure
     df = pd.DataFrame(points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
     # df = pd.DataFrame(points, columns=["Solvent", "Pressure"])
     df["Motor Speed"] = df["Motor Speed"].round(2)
-    df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
-    for solv in SOLV_NAMES:
-        f = make_temp_from_pressure_f(solv)
-        df.loc[df['Solvent'] == solv, 'Temperature'] = df.loc[df['Solvent'] == solv, 'Temperature'].apply(f).subtract(273.15)
+    if not use_BP:
+        df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
+
+    # data was given in pressure, need to convert to temp
+    if not use_press:
+        for solv in SOLV_NAMES:
+            f = make_temp_from_pressure_f(solv)
+            df.loc[df['Solvent'] == solv, 'Temperature'] = df.loc[df['Solvent'] == solv, 'Temperature'].apply(f).subtract(273.15)
     df['Temperature'] = df['Temperature'].round(1)
     return df
 
 if __name__ == "__main__":
-    df = get_biased_initial_points()
-    df.to_csv('30Points.csv')
-    print(df)
-    exit()
+    # n = 70
+    # df = get_discrete_biased_initial_points(n)
+    # df.to_csv(str(n) + 'Points.csv')
+    # print(df)
+    # exit()
 
 ##############################
 # Original plotting 
 ##############################
 
-"""
+# """
     start = default_timer()
-    n_points = 30
-    our_points = get_sobol_initial_points(n_points, use_press=True)
-    model="SOBOL"
+    n_points = 70
+    # our_points = get_sobol_initial_points(n_points, use_press=True)
+    model="DISCRETE"
+    df = pd.read_csv(str(n_points) + "Points.csv").iloc[:,1:]
+    our_points = df.values.tolist()
 
-    # TEST
-    df = pd.DataFrame(our_points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
-    df["Motor Speed"] = df["Motor Speed"].round(1)
-    df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
-    
-    for solv in SOLV_NAMES:
-        f = make_temp_from_pressure_f(solv)
-        df.loc[df['Solvent'] == solv, 'Temperature'] = df.loc[df['Solvent'] == solv, 'Temperature'].apply(f).subtract(273.15)
-        
-    print(df)
-    # print(df)
-    # we want <10k data points
+    # we want to get all available points in the space
     # space_points = get_sample_space_points(True, 500, 4, 20)
-    # print(len(space_points))
-    df.to_csv("30points.csv")
-    exit()
+    space_points = get_all_discrete_points()
 
-    all_points = our_points+space_points
+    # remove all the initial sample points in total points
+    for p in our_points:
+        space_points.discard(tuple(p))
+
+    all_points = our_points+list(space_points)
 
     # round and standardize all points
     df = pd.DataFrame(all_points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
-    df["Motor Speed"] = df["Motor Speed"].round(1)
+    df['Solvent'] = df['Solvent'].replace(SOLV_NAMES, [0,1,2,3,4])
+    # df["Motor Speed"] = df["Motor Speed"].round(1)
     # df["Temperature"] = df["Temperature"].round(1)
     scaler = StandardScaler()
     X_standardized = scaler.fit_transform(df)
+    num_levels = 10
 
     # Save initial sobol points to csv
-    df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
-    df.iloc[:n_points].to_csv("initial_points_" + model + ".csv")
+    # df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
+    # df.iloc[:n_points].to_csv("initial_points_" + model + ".csv")
    
     # Get PCA
     pca = PCA(n_components=2)  # Reduce to 2 dimensions for visualization
@@ -256,8 +371,7 @@ if __name__ == "__main__":
     kde = gaussian_kde(X_pca.T)
     density = kde(X_pca.T)
     plt.subplot(1, 2, 1)
-    # plt.tricontourf(X_pca[:, 0], X_pca[:, 1], density, cmap='Blues')
-    plt.contourf(X_grid, Y_grid, Z, levels=20, cmap='Blues')
+    plt.contourf(X_grid, Y_grid, Z, levels=num_levels, cmap='Blues')
     plt.colorbar(label='Density')
     # scatter plot of our points over the density
     pca_df = pd.DataFrame(data=X_pca, columns=['Principal Component 1', 'Principal Component 2'])
@@ -265,10 +379,6 @@ if __name__ == "__main__":
     plt.title('PCA Contour Density Map')
     plt.xlabel('PCA Dimension 1')
     plt.ylabel('PCA Dimension 2')
-    # plt.savefig("PCA_" + dataset_name + "_" + model)
-    # plt.show()
-    # plt.cla()
-    # exit()
 
     # get UMAP
     umap_model = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='euclidean', random_state=1, n_jobs=1)
@@ -292,8 +402,7 @@ if __name__ == "__main__":
     kde = gaussian_kde(umap_results.T)
     density = kde(umap_results.T)
     plt.subplot(1, 2, 2)
-    # plt.tricontourf(umap_results[:, 0], umap_results[:, 1], density, cmap='Blues')
-    plt.contourf(X_grid, Y_grid, Z, levels=20, cmap='Blues')
+    plt.contourf(X_grid, Y_grid, Z, levels=num_levels, cmap='Blues')
     plt.colorbar(label='Density')
     # scatter plot of our points over the density
     umap_df = pd.DataFrame(data=umap_results, columns=['UMAP1', 'UMAP2'])
@@ -301,7 +410,7 @@ if __name__ == "__main__":
     plt.title('UMAP Contour Density Map')
     plt.xlabel('UMAP Dimension 1')
     plt.ylabel('UMAP Dimension 2')
-    plt.savefig("SCATTER_" + dataset_name + "_" + model)
+    plt.savefig("DENSITY_" + dataset_name + "_" + model + str(num_levels))
     plt.show()
 
     print("Time elapsed:", default_timer()- start)

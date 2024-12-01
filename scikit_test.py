@@ -11,7 +11,7 @@ import pandas as pd
 from skopt import Optimizer
 
 from benchmarks import dummy_measure
-from constants import get_all_solvent_bounds
+from constants import get_all_temp_solv_bounds
 from initial_point_generator import get_sobol_initial_points
 from scikit_plot import print_results
 
@@ -24,7 +24,7 @@ PREC_VOL = [6, 9, 12]
 
 # Speed, Temp, Concentration, print gap, vol, solvent
 SPACE = [(0.01,25.0),(20.0,140.0), CONCEN, PRINT_GAP, PREC_VOL, BP]
-SOLV_TEMP_BOUNDS = get_all_solvent_bounds()
+SOLV_TEMP_BOUNDS = get_all_temp_solv_bounds()
 
 def material_constraint(params):
     """
