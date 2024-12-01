@@ -4,3 +4,7 @@ AX
 Sanity_Tests
 test.txt
 Tutorials
+ZZData
+.idea
+*.csv
+*.png
