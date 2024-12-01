@@ -38,13 +38,15 @@ from math import log
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.optimize import curve_fit
 
 
 CONSTANTS = {"CF": [4.20772, 1233.129, -40.953], "TOL": [4.08245, 1346.382, -53.508],
              "CB": [4.11083, 1435.675, -55.124], "mXY": [4.13607, 1463.218, -57.991],
              "MES": [4.19927, 1569.622, -63.572], "DEC": [4.07857, 1501.268, -78.67], 
              "ANI": [4.17726, 1489.756, -69.607], #"TCB": [4.64002, 2110.983, -30.721], 
-             "DCB": [4.19518, 1649.55, -59.836] }
+             "DCB": [4.19518, 1649.55, -59.836],
+             "TEST": [4.11751448, 1441.05336582, -56.57229616] }
 M_XYL_CONSTANTS = {"Pitzer and Scott":[(273, 333),(5.09199, 1996.545, -14.772)],
                  "Williamham": [(332.4, 413.19), (4.13607, 1463.218, -57.991)]}
 CONCEN = [10, 15, 20]
@@ -154,7 +156,7 @@ def calc_temp_bounds(solvent, percent_window, bounds):
             low = temp
     return low, high
 
-def calc_pressure_bounds(solvent, temp_window):
+def calc_pressure_bounds(solvent, temp_window, const_dict=CONSTANTS):
     """
     Calculates pressure bounds given temperature in 
     Celsius, where the max is pressure of 1 bar
@@ -163,8 +165,8 @@ def calc_pressure_bounds(solvent, temp_window):
         temperature in Celsius
     @return tuple of low and high pressure bounds in bar
     """
-    get_pressure = make_pressure_from_temp_func(*CONSTANTS[solvent])
-    get_temp = make_temp_from_pressure_func(*CONSTANTS[solvent])
+    get_pressure = make_pressure_from_temp_func(*const_dict[solvent])
+    get_temp = make_temp_from_pressure_func(*const_dict[solvent])
     max = to_Celsius(get_temp(1)) - 20
     if temp_window[1] > max:
         high = get_pressure(to_Kelvin(max))
@@ -194,49 +196,101 @@ def get_all_press_solv_bounds(low_temp = 25, high_temp = 140):
         bound_dict[solvent] = calc_pressure_bounds(solvent, (low_temp, high_temp))
     return bound_dict
 
-if __name__ == "__main__":
+def antoine_eq(T, A, B, C):
+    # T should be in Kelvin
+    return 10 ** (A - (B / (T + C)))  # Returns P (vapor pressure)
 
-    # for solvent in CONSTANTS:
-        # this is what we're using for the problem
-        # print(solvent, ":", calc_pressure_bounds(solvent, (25, 140)))
+def interpolate_curves(constants1, constants2, alpha: float, plot: bool=False) -> np.ndarray:
+    """
+    Returns an interpolation of two pressure temp curves
+    @param constants1: a list of 3 constants that represent the first Antoine equation
+    @param constants2: a list of 3 constants that represent the second Antoine equation
+    @param alpha: Interpolation parameter (alpha = 0 means curve1, alpha = 1 means curve2)
+    @param plot: If true, will save a graph of the interpolated curve compared to the 
+        original curves
+    """
+    # create 100 data points witin each curves space
+    pressure = np.linspace(0.0, 1.0, 100) 
+    curve1 = constants1[1]/(constants1[0] - np.log10(pressure)) - constants1[2]
+    curve2 = constants2[1]/(constants2[0] - np.log10(pressure)) - constants2[2]
+
+    # the interpolated y-data
+    temps = (1 - alpha) * curve1 + alpha * curve2
+
+    # find the interpolated curve equation
+    initial_guess = constants1
+    params, covariance = curve_fit(antoine_eq, temps, pressure, p0=initial_guess)
+
+    if plot:
+        # Plot the two curves and the interpolated curve
+        plt.cla()
+        plt.plot(pressure, curve1, label="CB")
+        plt.plot(pressure, curve2, label="ANI")
+        plt.plot(pressure, temps, label=f"Interpolated Curve (alpha={alpha})", linestyle="--")
+        plt.legend()
+        plt.xlabel("Pressure")
+        plt.ylabel("Temperature")
+        plt.title("Interpolation of CB and ANI temp pressure curve")
+        plt.savefig("CB_ANI_a" + str(alpha) + ".png")
+        # plt.show()
+
+    return params, covariance
+
+if __name__ == "__main__":
+    # ratios 9:1, 8:2, 7:3
+    # alphas = [0.1, 0.2, 0.3] # the lower the number, the more focused on the first curve
+    # TEST_CONSTANTS = {"CB": [4.11083, 1435.675, -55.124],
+    #                   "ANI": [4.17726, 1489.756, -69.607]}
+    # count = 1
+    # for a in alphas:
+    #     params, covariance = interpolate_curves(CONSTANTS["CB"], CONSTANTS["ANI"], a, True)
+    #     TEST_CONSTANTS["I" + str(count)] = params
+    #     count+=1
+    
+
+    # for solvent in TEST_CONSTANTS:
+    #     # this is what we're using for the problem
+    #     print(solvent, ":", calc_pressure_bounds(solvent, (25, 140), TEST_CONSTANTS))
 
     # ###############################################
     # # Temp Pressures of different curves
     # ###############################################
-    # temp_press_dict = {"Pitzer and Scott":[], "Williamham": []}
+    # pressures =  [0.1, 0.2, 0.3, 0.4, 0.5, 1]
+    # temp_press_dict = {"CB":[], "ANI": [], "I1": [], "I2": [], "I3": []}
     # for name in temp_press_dict:
-    #     constants = M_XYL_CONSTANTS[name][1]
+    #     constants = TEST_CONSTANTS[name]
     #     f = make_temp_from_pressure_func(*constants)
     #     for press in pressures:
     #         temp_press_dict[name].append(to_Celsius(f(press)))
     # temp_press_dict["Pressure"] = pressures
     # df = pd.DataFrame(temp_press_dict)
+    # df.to_csv("CB_ANI_temp_press.csv")
     # print(df)
         
     ######################
     # Pressure choices
     ######################
-    temp_press_list = []
-    pressures =  [0.1, 0.2, 0.3, 0.4, 0.5]
-    for solvent in CONSTANTS:
+    # temp_press_list = []
+    # pressures =  [0.1, 0.2, 0.3, 0.4, 0.5]
+    # for solvent in CONSTANTS:
 
-        # this is for getting a list of temperatures related to a lits of pressures
-        f = make_temp_from_pressure_func(*CONSTANTS[solvent])
-        for press in pressures:
-            temp_press_list.append([solvent, press, to_Celsius(f(press))])
-    df = pd.DataFrame(temp_press_list, columns=["Solvent", "Pressure (Bars)", "Temperature (Celsius)"])
-    df.to_csv("Temp_Pressure_Choices.csv")
-    print(df)
+    #     # this is for getting a list of temperatures related to a lits of pressures
+    #     f = make_temp_from_pressure_func(*CONSTANTS[solvent])
+    #     for press in pressures:
+    #         temp_press_list.append([solvent, press, to_Celsius(f(press))])
+    # df = pd.DataFrame(temp_press_list, columns=["Solvent", "Pressure (Bars)", "Temperature (Celsius)"])
+    # df.to_csv("Temp_Pressure_Choices.csv")
+    # print(df)
 
     #####################
     # Plotting Curves
     #####################
-    # constants = [4.20772, 1233.129, -40.953]
-    # other_constants = [4.56992, 1486.455, -8.612]
-    # temps = [425, 450, 475, 500, 525]
-    # pressures = [10, 20, 30, 40, 50, 60]
-    # plot_temp_pressure(temps, pressures, constants, "first")
-    # plot_temp_pressure(temps, pressures, other_constants, "second")
+    constants = [4.20772, 1233.129, -40.953]
+    other_constants = [4.56992, 1486.455, -8.612]
+    temps = [425, 450, 475, 500, 525]
+    pressures = [10, 20, 30, 40, 50, 60]
+    plot_temp_pressure(temps, pressures, constants, "first")
+    plot_temp_pressure(temps, pressures, other_constants, "second")
     
     
     
