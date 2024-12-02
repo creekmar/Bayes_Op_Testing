@@ -304,6 +304,93 @@ def get_continous_biased_initial_points(n=30, use_BP=False, use_press = False):
     df['Temperature'] = df['Temperature'].round(1)
     return df
 
+def plot_pca_umap(df, model, graph, color, dataset_name, n_points, num_levels = None):
+    """
+    model=DISCRETE vs CONTINUOUS
+    graph = DENSITY vs SCATTER
+    color = MONO vs MULTI
+    dataset_name = "Lab_Automation"
+    n_points = number of initial points vs sample space points
+    num_levels = 10
+    """
+    scaler = StandardScaler()
+    X_standardized = scaler.fit_transform(df)
+   
+    ##########
+    # Get PCA
+    ##########
+    pca = PCA(n_components=2)  # Reduce to 2 dimensions for visualization
+    X_pca = pca.fit_transform(X_standardized)
+
+    # plot
+    plt.figure(figsize=(14, 6))
+    plt.subplot(1, 2, 1)
+
+    if graph == "DENSITY":
+        # Plot density of the sample pca data
+        x_pca, y_pca = X_pca[:, 0], X_pca[:, 1]
+
+        # Compute the KDE
+        kde = gaussian_kde([x_pca, y_pca])
+
+        # Create a grid of points for evaluation
+        x_grid = np.linspace(x_pca.min() - 1, x_pca.max() + 1, 100)
+        y_grid = np.linspace(y_pca.min() - 1, y_pca.max() + 1, 100)
+        X_grid, Y_grid = np.meshgrid(x_grid, y_grid)
+        positions = np.vstack([X_grid.ravel(), Y_grid.ravel()])
+        Z = kde(positions).reshape(X_grid.shape)
+
+        # plot density
+        plt.contourf(X_grid, Y_grid, Z, levels=num_levels, cmap='Blues')
+        plt.colorbar(label='Density')
+
+    # scatter plot
+    pca_df = pd.DataFrame(data=X_pca, columns=['Principal Component 1', 'Principal Component 2'])
+    if color == "MONO":
+        plt.scatter(pca_df['Principal Component 1'][0:n_points], pca_df['Principal Component 2'][0:n_points], c='red', edgecolor='k', s=40)
+    plt.title('PCA Contour Density Map')
+    plt.xlabel('PCA Dimension 1')
+    plt.ylabel('PCA Dimension 2')
+
+    ##########
+    # get UMAP
+    ##########
+    umap_model = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='euclidean', random_state=1, n_jobs=1)
+    umap_results = umap_model.fit_transform(X_standardized)
+
+    # Plot density of the sample umap data
+    plt.subplot(1, 2, 2)
+
+    if graph == "DENSITY":
+        # Extract UMAP components
+        x_umap, y_umap = umap_results[:, 0], umap_results[:, 1]
+
+        # Compute the KDE
+        kde = gaussian_kde([x_umap, y_umap])
+
+        # Get kde of the umap values
+        x_grid = np.linspace(x_umap.min() - 1, x_umap.max() + 1, 100)
+        y_grid = np.linspace(y_umap.min() - 1, y_umap.max() + 1, 100)
+        X_grid, Y_grid = np.meshgrid(x_grid, y_grid)
+        positions = np.vstack([X_grid.ravel(), Y_grid.ravel()])
+        Z = kde(positions).reshape(X_grid.shape)
+
+        plt.contourf(X_grid, Y_grid, Z, levels=num_levels, cmap='Blues')
+        plt.colorbar(label='Density')
+
+    # scatter plot
+    umap_df = pd.DataFrame(data=umap_results, columns=['UMAP1', 'UMAP2'])
+    if color == "MONO":
+        plt.scatter(umap_df['UMAP1'][0:n_points], umap_df['UMAP2'][0:n_points], c='red', edgecolor='k', s=40)
+    plt.title('UMAP Contour Density Map')
+    plt.xlabel('UMAP Dimension 1')
+    plt.ylabel('UMAP Dimension 2')
+    if num_levels:
+        plt.savefig(dataset_name + "_" + graph + "_" + model + "_" + str(num_levels) + "_" + color)
+    else:
+        plt.savefig(dataset_name + "_" + graph + "_" + model + "_" + color)
+    plt.show()
+
 if __name__ == "__main__":
     # n = 70
     # df = get_discrete_biased_initial_points(n)
@@ -319,7 +406,6 @@ if __name__ == "__main__":
     start = default_timer()
     n_points = 70
     # our_points = get_sobol_initial_points(n_points, use_press=True)
-    model="DISCRETE"
     df = pd.read_csv(str(n_points) + "Points.csv").iloc[:,1:]
     our_points = df.values.tolist()
 
@@ -338,80 +424,17 @@ if __name__ == "__main__":
     df['Solvent'] = df['Solvent'].replace(SOLV_NAMES, [0,1,2,3,4])
     # df["Motor Speed"] = df["Motor Speed"].round(1)
     # df["Temperature"] = df["Temperature"].round(1)
-    scaler = StandardScaler()
-    X_standardized = scaler.fit_transform(df)
-    num_levels = 10
 
     # Save initial sobol points to csv
     # df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
     # df.iloc[:n_points].to_csv("initial_points_" + model + ".csv")
-   
-    # Get PCA
-    pca = PCA(n_components=2)  # Reduce to 2 dimensions for visualization
-    X_pca = pca.fit_transform(X_standardized)
-
+    
+    model="DISCRETE" # vs CONTINUOUS
+    graph = "DENSITY" # vs SCATTER
+    color = "MONO" # vs MULTI
     dataset_name = "Lab_Automation"
-
-    # plot
-    plt.figure(figsize=(14, 6))
-
-    # Plot density of the sample pca data
-    x_pca, y_pca = X_pca[:, 0], X_pca[:, 1]
-
-    # Compute the KDE
-    kde = gaussian_kde([x_pca, y_pca])
-
-    # Create a grid of points for evaluation
-    x_grid = np.linspace(x_pca.min() - 1, x_pca.max() + 1, 100)
-    y_grid = np.linspace(y_pca.min() - 1, y_pca.max() + 1, 100)
-    X_grid, Y_grid = np.meshgrid(x_grid, y_grid)
-    positions = np.vstack([X_grid.ravel(), Y_grid.ravel()])
-    Z = kde(positions).reshape(X_grid.shape)
-
-    kde = gaussian_kde(X_pca.T)
-    density = kde(X_pca.T)
-    plt.subplot(1, 2, 1)
-    plt.contourf(X_grid, Y_grid, Z, levels=num_levels, cmap='Blues')
-    plt.colorbar(label='Density')
-    # scatter plot of our points over the density
-    pca_df = pd.DataFrame(data=X_pca, columns=['Principal Component 1', 'Principal Component 2'])
-    plt.scatter(pca_df['Principal Component 1'][0:n_points], pca_df['Principal Component 2'][0:n_points], c='red', edgecolor='k', s=40)
-    plt.title('PCA Contour Density Map')
-    plt.xlabel('PCA Dimension 1')
-    plt.ylabel('PCA Dimension 2')
-
-    # get UMAP
-    umap_model = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='euclidean', random_state=1, n_jobs=1)
-    umap_results = umap_model.fit_transform(X_standardized)
-
-    # Plot density of the sample umap data
-
-    # Extract UMAP components
-    x_umap, y_umap = umap_results[:, 0], umap_results[:, 1]
-
-    # Compute the KDE
-    kde = gaussian_kde([x_umap, y_umap])
-
-    # Create a grid of points for evaluation
-    x_grid = np.linspace(x_umap.min() - 1, x_umap.max() + 1, 100)
-    y_grid = np.linspace(y_umap.min() - 1, y_umap.max() + 1, 100)
-    X_grid, Y_grid = np.meshgrid(x_grid, y_grid)
-    positions = np.vstack([X_grid.ravel(), Y_grid.ravel()])
-    Z = kde(positions).reshape(X_grid.shape)
-
-    kde = gaussian_kde(umap_results.T)
-    density = kde(umap_results.T)
-    plt.subplot(1, 2, 2)
-    plt.contourf(X_grid, Y_grid, Z, levels=num_levels, cmap='Blues')
-    plt.colorbar(label='Density')
-    # scatter plot of our points over the density
-    umap_df = pd.DataFrame(data=umap_results, columns=['UMAP1', 'UMAP2'])
-    plt.scatter(umap_df['UMAP1'][0:n_points], umap_df['UMAP2'][0:n_points], c='red', edgecolor='k', s=40)
-    plt.title('UMAP Contour Density Map')
-    plt.xlabel('UMAP Dimension 1')
-    plt.ylabel('UMAP Dimension 2')
-    plt.savefig("DENSITY_" + dataset_name + "_" + model + str(num_levels))
-    plt.show()
+    num_levels = 10
+    plot_pca_umap(df, "DISCRETE", "DENSITY", "MONO", "Lab_Automation", n_points, 10)
 
     print("Time elapsed:", default_timer()- start)
 # """
