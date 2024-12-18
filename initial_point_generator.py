@@ -7,6 +7,7 @@ Purpose: Generate initial sobol points for lab automation problem and plot them 
 
 import random
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 import math
@@ -193,7 +194,7 @@ def get_sample_space_points(brute_force = True, n_points = 500, m_increment = 2,
             initial_point_gen = sampler.Lhs()
             solv = count%5
             temp_bounds = SOLV_TEMP_BOUNDS[SOLV_NAMES[solv]]
-            x = initial_point_gen.generate([(0.1,25.0),temp_bounds, CONCEN, PRINT_GAP, PREC_VOL], n_points,SEED)
+            x = initial_point_gen.generate([(0.1,25.0),temp_bounds, CONCEN, PRINT_GAP, PREC_VOL], n_points,SEED+count)
             for p in x:
                 # have to add the solvent 
                 p.append(BP[solv])
@@ -304,7 +305,8 @@ def get_continous_biased_initial_points(n=30, use_BP=False, use_press = False):
     df['Temperature'] = df['Temperature'].round(1)
     return df
 
-def plot_pca_umap(df, model, graph, color, dataset_name, n_points, num_levels = None):
+def plot_pca_umap(df, model, graph, color, dataset_name, n_points, initial_counts = None, 
+                  color_list = None, color_labels = None, num_levels = None):
     """
     model=DISCRETE vs CONTINUOUS
     graph = DENSITY vs SCATTER
@@ -321,9 +323,10 @@ def plot_pca_umap(df, model, graph, color, dataset_name, n_points, num_levels = 
     ##########
     pca = PCA(n_components=2)  # Reduce to 2 dimensions for visualization
     X_pca = pca.fit_transform(X_standardized)
+    pca_df = pd.DataFrame(data=X_pca, columns=['Principal Component 1', 'Principal Component 2'])
 
     # plot
-    plt.figure(figsize=(14, 6))
+    fig = plt.figure(figsize=(14, 7))
     plt.subplot(1, 2, 1)
 
     if graph == "DENSITY":
@@ -343,12 +346,22 @@ def plot_pca_umap(df, model, graph, color, dataset_name, n_points, num_levels = 
         # plot density
         plt.contourf(X_grid, Y_grid, Z, levels=num_levels, cmap='Blues')
         plt.colorbar(label='Density')
+        plt.title('PCA Contour Density Map')
+    else:
+        plt.scatter(pca_df['Principal Component 1'][n_points:], pca_df['Principal Component 2'][n_points:], c='grey', s=40) #, edgecolor='k')
+        plt.title('PCA Scatterplot')
 
     # scatter plot
-    pca_df = pd.DataFrame(data=X_pca, columns=['Principal Component 1', 'Principal Component 2'])
     if color == "MONO":
         plt.scatter(pca_df['Principal Component 1'][0:n_points], pca_df['Principal Component 2'][0:n_points], c='red', edgecolor='k', s=40)
-    plt.title('PCA Contour Density Map')
+    else:
+        start = 0
+        for i in range(len(initial_counts)):
+            end = start + initial_counts[i] - 1
+            plt.scatter(pca_df['Principal Component 1'][start:end], 
+                        pca_df['Principal Component 2'][start:end], c=color_list[i], edgecolor='k', s=40)
+            start += initial_counts[i]
+
     plt.xlabel('PCA Dimension 1')
     plt.ylabel('PCA Dimension 2')
 
@@ -357,6 +370,7 @@ def plot_pca_umap(df, model, graph, color, dataset_name, n_points, num_levels = 
     ##########
     umap_model = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='euclidean', random_state=1, n_jobs=1)
     umap_results = umap_model.fit_transform(X_standardized)
+    umap_df = pd.DataFrame(data=umap_results, columns=['UMAP1', 'UMAP2'])
 
     # Plot density of the sample umap data
     plt.subplot(1, 2, 2)
@@ -377,15 +391,40 @@ def plot_pca_umap(df, model, graph, color, dataset_name, n_points, num_levels = 
 
         plt.contourf(X_grid, Y_grid, Z, levels=num_levels, cmap='Blues')
         plt.colorbar(label='Density')
+        plt.title('UMAP Contour Density Map')
+    else:
+        plt.scatter(umap_df['UMAP1'][n_points:], umap_df['UMAP2'][n_points:], c='grey', s=40) #, edgecolor='k')
+        plt.title('UMAP Scatterplot')
 
     # scatter plot
-    umap_df = pd.DataFrame(data=umap_results, columns=['UMAP1', 'UMAP2'])
     if color == "MONO":
         plt.scatter(umap_df['UMAP1'][0:n_points], umap_df['UMAP2'][0:n_points], c='red', edgecolor='k', s=40)
-    plt.title('UMAP Contour Density Map')
+    else:
+        start = 0
+        for i in range(len(initial_counts)):
+            end = start + initial_counts[i] - 1
+            plt.scatter(umap_df['UMAP1'][start:end], 
+                        umap_df['UMAP2'][start:end], c=color_list[i], edgecolor='k', s=40)
+            start += initial_counts[i]
+
     plt.xlabel('UMAP Dimension 1')
     plt.ylabel('UMAP Dimension 2')
-    if num_levels:
+
+    # adding legend for multicolors
+    if color == "MULTI":
+        # Create custom legend handles using color_list
+        legend_handles = []
+        for c in color_list:
+            legend_handles.append(Line2D([0], [0], color=c, lw=2))
+        if graph == "SCATTER":
+            legend_handles.append(Line2D([0], [0], color='grey', lw=2))
+            color_labels.append('SAMPLES')
+
+        # Add the legend to the plot
+        fig.legend(handles=legend_handles, labels=color_labels, loc=9, ncol=len(color_labels))
+
+    # saving plot
+    if graph == "DENSITY":
         plt.savefig(dataset_name + "_" + graph + "_" + model + "_" + str(num_levels) + "_" + color)
     else:
         plt.savefig(dataset_name + "_" + graph + "_" + model + "_" + color)
@@ -407,6 +446,8 @@ if __name__ == "__main__":
     n_points = 70
     # our_points = get_sobol_initial_points(n_points, use_press=True)
     df = pd.read_csv(str(n_points) + "Points.csv").iloc[:,1:]
+    df = df.sort_values('Solvent')
+    initial_counts = df['Solvent'].value_counts().tolist()
     our_points = df.values.tolist()
 
     # we want to get all available points in the space
@@ -417,7 +458,11 @@ if __name__ == "__main__":
     for p in our_points:
         space_points.discard(tuple(p))
 
-    all_points = our_points+list(space_points)
+    df = pd.DataFrame(space_points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
+    df = df.sort_values('Solvent')
+    # sample_counts = df["Solvent"].value_counts().tolist()
+    all_points = our_points+df.values.tolist()
+
 
     # round and standardize all points
     df = pd.DataFrame(all_points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
@@ -433,8 +478,11 @@ if __name__ == "__main__":
     graph = "DENSITY" # vs SCATTER
     color = "MONO" # vs MULTI
     dataset_name = "Lab_Automation"
+    color_list = ["orange", "red", "green", "cyan", "yellow"]
+    color_labels = SOLV_NAMES.copy()
+    color_labels.sort(key=str.lower)
     num_levels = 10
-    plot_pca_umap(df, "DISCRETE", "DENSITY", "MONO", "Lab_Automation", n_points, 10)
+    plot_pca_umap(df, "DISCRETE", "SCATTER", "MULTI", "Lab_Automation", n_points, initial_counts, color_list, color_labels, 10)
 
     print("Time elapsed:", default_timer()- start)
 # """
