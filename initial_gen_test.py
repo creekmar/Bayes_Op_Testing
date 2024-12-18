@@ -1,4 +1,5 @@
 """
+File: initial_gen_test.py
 Author: Ming Creekmore
 Purpose: To show how evenly distributed the sample points from LHS
          and sobol are, including for when samples are take a few 
