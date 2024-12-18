@@ -18,26 +18,42 @@ import umap
 from scipy.stats import gaussian_kde
 from timeit import default_timer
 
-from constants import make_temp_from_pressure_f, get_all_press_solv_bounds
+from constants import get_all_press_solv_bounds, get_all_temp_solv_bounds, make_temp_from_pressure_f
 
-# discrete/categorical input space
-SOLV_NAMES = ["CF", "CB", "CB:A1", "CB:A2", "CB:A3"]
-BP = [61.2, 131.2, 133.4, 135.6, 137.8]
-CONCEN = [5, 10]
-PRINT_GAP = [50, 100]
-PREC_VOL = [6, 9, 12]
-MOTOR_SPEEDS = [0.01, 0.0355, 0.126, 0.4472, 1.587, 5.635, 20]
-TEMP_CHOICES = {"CF": [25, 41.3], "CB": [25, 47.3, 62.9, 87.6, 107.4], "CB:A1": [25, 47.3, 62.9, 87.6, 107.4],
-                "CB:A2": [25, 47.3, 62.9, 87.6, 107.4], "CB:A3": [25, 47.3, 62.9, 87.6, 107.4]}
-PRESSURE_CHOICES = {"CF": [0.258957, 0.5], "CB": [0.015971, 0.05, 0.1, 0.258957, 0.5],
-                    "CB:A1": [0.015971, 0.05, 0.1, 0.258957, 0.5], "CB:A2": [0.015971, 0.05, 0.1, 0.258957, 0.5],
-                    "CB:A3": [0.015971, 0.05, 0.1, 0.258957, 0.5]}
+# discrete input space, add D at the end to show it is dicrete
+# for sampling, all sample spaces will be treated like categorical
+# Should be in a list
+SOLV_NAMES = ["CF", "CB", "CB9:A1", "CB8:A2", "CB7:A3"]
+CONCEN_D = [5, 10]
+PRINT_GAP_D = [50, 100]
+PREC_VOL_D = [6, 9, 12]
+MOTOR_SPEEDS_D = [0.01, 0.0355, 0.126, 0.4472, 1.587, 5.635, 20]
+TEMP_CHOICES_D = {"CF": [25, 41.3], "CB": [25, 47.3, 62.9, 87.6, 107.4], "CB9:A1": [25, 47.3, 62.9, 87.6, 107.4],
+                "CB8:A2": [25, 47.3, 62.9, 87.6, 107.4], "CB7:A3": [25, 47.3, 62.9, 87.6, 107.4]}
+PRESSURE_CHOICES_D = {"CF": [0.258957, 0.5], "CB": [0.015971, 0.05, 0.1, 0.258957, 0.5],
+                    "CB9:A1": [0.015971, 0.05, 0.1, 0.258957, 0.5], "CB8:A2": [0.015971, 0.05, 0.1, 0.258957, 0.5],
+                    "CB7:A3": [0.015971, 0.05, 0.1, 0.258957, 0.5]}
+LABELS_D = ["Motor Speed", "Temperature", "Concentration","Print Gap", "Precursor Volume", "Solvent"]
+
+# Continuous Input Space, add C at the end to show it is continuous
+# Should be a tuple to show low and high
+# Should add decimal point to signify float
+# Speed, Temp, vol, concentration, solvent
+SPEED_C = (0.01, 20.0, 'log-uniform') # log-uniform is prior
+TEMP_C = (25.0, 140.0)
+PRESSURE_C = (0.0, 0.5)
+PREC_VOL_C = (6.0, 12.0)
+CONCEN_C = (1,5) # technically discrete from range 1 to 5. Will use math formula 2n-1 to correct to actual values
+SPACE = [SPEED_C, PRESSURE_C, PREC_VOL_C, CONCEN_C, SOLV_NAMES]
+SOLV_TEMP_BOUNDS = get_all_temp_solv_bounds(SOLV_NAMES, PRESSURE_C, TEMP_C)
+SOLV_PRESS_BOUNDS = get_all_press_solv_bounds(SOLV_NAMES, TEMP_C, PRESSURE_C)
+LABELS_C = ["Motor Speed", "Pressure", "Precursor Volume", "Concentration", "Solvent"]
+
 SEED = 42
 
-# Speed, Temp, Concentration, print gap, vol, solvent
-SPACE = [(0.01,20.0),(25.0,140.0), CONCEN, PRINT_GAP, PREC_VOL, BP]
-SOLV_TEMP_BOUNDS = {'CF': (25, 41.2), 'CB': (25, 112), 'CB:A1': (25, 112), 'CB:A2': (25, 112), 'CB:A3': (25, 112)}
-SOLV_PRESS_BOUNDS = get_all_press_solv_bounds(25, 140)
+########################
+# Discrete Data
+########################
 
 def get_all_discrete_points() -> set:
     """
@@ -47,11 +63,11 @@ def get_all_discrete_points() -> set:
     """
     points = set()
     for s in SOLV_NAMES:
-        for c in CONCEN:
-            for g in PRINT_GAP:
-                for v in PREC_VOL:
-                    for m in MOTOR_SPEEDS:
-                        for t in TEMP_CHOICES[s]:
+        for c in CONCEN_D:
+            for g in PRINT_GAP_D:
+                for v in PREC_VOL_D:
+                    for m in MOTOR_SPEEDS_D:
+                        for t in TEMP_CHOICES_D[s]:
                             points.add((m, t,c,g,v,s))
     return points
 
@@ -113,11 +129,11 @@ def discrete_sample_set(n: int, og_lists: list[list], sample: set = set()):
             
     return p_list
 
-def get_discrete_biased_initial_points(n=30):
+def get_discrete_biased_initial_points(n=30, use_press = False):
     """
     Get evenly spaced points from the discrete sample space
     [Speed, Temp, Concentration, print gap, vol, solvent]
-    @return a dataframe of the points
+    @return a list of points
     """
     c_set = set()
     # getting points per solvent
@@ -129,88 +145,28 @@ def get_discrete_biased_initial_points(n=30):
         else:
             n_per_solv = n//num_solv
         
-        choice_list = discrete_sample_set(n_per_solv, [MOTOR_SPEEDS, TEMP_CHOICES[SOLV_NAMES[s]], CONCEN, PRINT_GAP, PREC_VOL], c_set)
-        points += [list(point) + [s] for point in choice_list]
-    
-    # fixing dataframe of data to be rounded and solvent names to replace numbers
-    df = pd.DataFrame(points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
-    df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
-    return df
+        if use_press:
+            choice_list = discrete_sample_set(n_per_solv, [MOTOR_SPEEDS_D, PRESSURE_CHOICES_D[SOLV_NAMES[s]], CONCEN_D, PRINT_GAP_D, PREC_VOL_D], c_set)
+        else:
+            choice_list = discrete_sample_set(n_per_solv, [MOTOR_SPEEDS_D, TEMP_CHOICES_D[SOLV_NAMES[s]], CONCEN_D, PRINT_GAP_D, PREC_VOL_D], c_set)
+        points += [list(point) + [SOLV_NAMES[s]] for point in choice_list]
 
-
-#################################
-# Speed and Temp are Continuous #
-#################################
-
-def generate_logarithmic_data(start, end, num_points, random = False):
-    """
-    Generates logarithmic spaced points between start and end"""
-    if random: 
-        random_log_values = np.random.uniform(np.log10(start), np.log10(end), num_points)
-        data_points = 10 ** random_log_values
-    else:
-        # generate evenly spaced points
-        data_points = np.logspace(np.log10(start), np.log10(end), num=num_points)
-    return data_points
-
-def get_sample_space_points(brute_force = True, n_points = 500, m_increment = 2, t_increment = 10):
-    """
-    This is a brute force approach to show the data points of all points in the sample space
-    [Speed, Temp, Concentration, print gap, vol, solvent]
-    where speed and temp are continous
-    To reduce the time, increase the motor and temperature increments so there are less points
-    To get more points, decrease the motor and temperature increments
-    @param: brute force: boolean to determine whether to partisan it ourselves or to draw random samples
-    @param: n_points: number of points to generate. Only used when brute_force=False
-    @param: m_increment: the motor speed increment to partisan by when brute_force=True
-    @param: t_increment: the temperature increment to partisan by when brute_force=True
-    @return: A list of points in space [Speed, Temp, Concentration, print gap, vol, solvent]
-             theoretically to represent the whole sample space
-    """
-
-    count = 0
-    points = []
-    if brute_force:
-        # # the solvent
-        for s in range(len(SOLV_NAMES)):
-            # prec vol
-            for v in range(len(PREC_VOL)):
-                # print gap
-                for g in range(len(PRINT_GAP)):
-                    # concentration
-                    for c in range(len(CONCEN)):
-                        temp_bounds = SOLV_TEMP_BOUNDS[SOLV_NAMES[s]]
-                        t = temp_bounds[0]
-                        while t <= temp_bounds[1]:
-                            m = 0.1
-                            while m <= 25.0:
-                                points.append([m, t, CONCEN[c], PRINT_GAP[g], PREC_VOL[v], s])
-                                m += m_increment
-                            points.append([25.0, t, CONCEN[c], PRINT_GAP[g], PREC_VOL[v], s])
-                            t += t_increment
-
-    else: # just get random data sample
-        for count in range(5):
-            initial_point_gen = sampler.Lhs()
-            solv = count%5
-            temp_bounds = SOLV_TEMP_BOUNDS[SOLV_NAMES[solv]]
-            x = initial_point_gen.generate([(0.1,25.0),temp_bounds, CONCEN, PRINT_GAP, PREC_VOL], n_points,SEED+count)
-            for p in x:
-                # have to add the solvent 
-                p.append(BP[solv])
-                points.append(p)
     return points
 
-def get_continuous_sobol_initial_points(n=14, use_BP=False, use_press = False):
+
+#################################
+# Continuous Sample Space
+#################################
+
+def get_continuous_sobol_initial_points(n=14, use_press = False):
     """
-    Gets sobol generated points in the space [Speed, Temp, Concentration, print gap, vol, solvent]
-    where speed and temperature are continuous
+    Gets sobol generated points in the space [Speed, pressure/temp, vol, concentration, solvent]
+    where speed and temperature/press and vol are continuous
     The seed count is fixed so the same points will be generated each time
     Solvent will always have an even amount of points between each different solvent
     @param: n: number of points to generate
-    @param: use_BP: whether to replace solvent number with its boiling points
     @param: use_press: whether to use pressure or temperature
-    @return: points in a list 
+    @return: a list of points
     """
     
     count = 0
@@ -219,91 +175,28 @@ def get_continuous_sobol_initial_points(n=14, use_BP=False, use_press = False):
     # initial point loop
     # will generate points randomly for each solvent in order
     # to keep the temperature bounds
-    for count in range(5):
+    solv_num = len(SOLV_NAMES)
+    for count in range(solv_num):
         # so we don't keep getting warnings, sobol sampler initialized here
         initial_point_gen = sampler.Sobol()
-        solv = count%5
         if use_press:
-            temp_bounds = SOLV_PRESS_BOUNDS[SOLV_NAMES[solv]]
+            temp_bounds = SOLV_PRESS_BOUNDS[SOLV_NAMES[count]]
         else:
-            temp_bounds = SOLV_TEMP_BOUNDS[SOLV_NAMES[solv]]
-        if (n//5)*5 + count < n:  
-            n_per_solv = (n//5)+1
+            temp_bounds = SOLV_TEMP_BOUNDS[SOLV_NAMES[count]]
+        if (n//solv_num)*solv_num + count < n:  
+            n_per_solv = (n//solv_num)+1
         else:
-            n_per_solv = n//5
+            n_per_solv = n//solv_num
         # need to have power of 2
         exponent = math.ceil(math.log2(n_per_solv))
-        x = initial_point_gen.generate([(0.1,25.0),temp_bounds, CONCEN, PRINT_GAP, PREC_VOL], 2**exponent, SEED+count)
+        x = initial_point_gen.generate([SPEED_C,temp_bounds, PREC_VOL_C, CONCEN_C], 2**exponent, SEED+count)
         x = x[:n_per_solv]
         for p in x:
             # have to add the solvent 
-            if use_BP:
-                p.append(BP[solv])
-            else:
-                p.append(solv)
+            p.append(SOLV_NAMES[count])
             points.append(p)
         
     return points
-
-def get_continous_biased_initial_points(n=30, use_BP=False, use_press = False):
-    """
-    Gets semi-biased generated points in the space 
-    [Speed, Temp, Concentration, print gap, vol, solvent]
-    where speed and temperature are continuous 
-    The speed is uniformly distributed, while the temperature
-    is evenly spaced logarithmically by pressure
-    The concentration, print gap, vol, and solvent are chosen randomly
-    @param: n: number of points to generate
-    @param: use_BP: whether to replace solvent number with its boiling points
-    @param: use_press: whether to use pressure or temperature
-    @return: points in a list 
-    """
-    # get all combinations of volume, gap, and concentration
-    # prec vol
-    combinations = []
-    for v in range(3):
-        # print gap
-        for g in range(4):
-            # concentration
-            for c in range(3):     
-                combinations.append([CONCEN[c], PRINT_GAP[g], PREC_VOL[v]])
-    
-    choice_list = np.random.choice(len(combinations), n, replace=False)
-    choice_count = 0
-    # getting points per solvent
-    points = []
-    for s in range(5):
-        if (n//5)*5 + s < n:  
-            n_per_solv = (n//5)+1
-        else:
-            n_per_solv = n//5
-        # we want motor speeds more forcused on the lower values
-        m_array = generate_logarithmic_data(0.01, 20, n_per_solv)
-        # we want temperatures evenly spaced by the pressure bounds
-        bounds = SOLV_PRESS_BOUNDS[SOLV_NAMES[s]]
-        t_array = np.random.uniform(bounds[0], bounds[1], n_per_solv)
-
-        count = 0
-        while count < n_per_solv:
-           
-            points.append([m_array[count]] + [t_array[count]] + combinations[choice_list[choice_count]] + [s])
-            choice_count+=1
-            count+=1
-
-    # fixing dataframe of data to be rounded and solvent names to replace numbers
-    df = pd.DataFrame(points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
-    # df = pd.DataFrame(points, columns=["Solvent", "Pressure"])
-    df["Motor Speed"] = df["Motor Speed"].round(2)
-    if not use_BP:
-        df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
-
-    # data was given in pressure, need to convert to temp
-    if not use_press:
-        for solv in SOLV_NAMES:
-            f = make_temp_from_pressure_f(solv)
-            df.loc[df['Solvent'] == solv, 'Temperature'] = df.loc[df['Solvent'] == solv, 'Temperature'].apply(f).subtract(273.15)
-    df['Temperature'] = df['Temperature'].round(1)
-    return df
 
 def plot_pca_umap(df, model, graph, color, dataset_name, n_points, initial_counts = None, 
                   color_list = None, color_labels = None, num_levels = None):
@@ -431,8 +324,8 @@ def plot_pca_umap(df, model, graph, color, dataset_name, n_points, initial_count
     plt.show()
 
 if __name__ == "__main__":
-    # n = 70
-    # df = get_discrete_biased_initial_points(n)
+    # n = 14
+    # df = get_continuous_sobol_initial_points(n, use_press=True)
     # df.to_csv(str(n) + 'Points.csv')
     # print(df)
     # exit()
@@ -443,46 +336,74 @@ if __name__ == "__main__":
 
 # """
     start = default_timer()
-    n_points = 70
-    # our_points = get_sobol_initial_points(n_points, use_press=True)
-    df = pd.read_csv(str(n_points) + "Points.csv").iloc[:,1:]
-    df = df.sort_values('Solvent')
-    initial_counts = df['Solvent'].value_counts().tolist()
-    our_points = df.values.tolist()
+    n_points = 30
+    discrete = False
+    use_press = True
+    reading_file = False
 
-    # we want to get all available points in the space
-    # space_points = get_sample_space_points(True, 500, 4, 20)
-    space_points = get_all_discrete_points()
+    # getting our sampling space
+    if reading_file:
+        df_sample = pd.read_csv(str(n_points) + "Points.csv").iloc[:,1:]
+        df_sample = df_sample.sort_values('Solvent')
+    else:
+        if discrete:
+            points = get_discrete_biased_initial_points(n_points, use_press)
+            # NOTE: the column names will change depending on what the sample space is. Do make sure it is the right order
+            df_sample = pd.DataFrame(points, columns=LABELS_D)
+        else:
+            points = get_continuous_sobol_initial_points(n_points, use_press)
+            if use_press:
+                df_sample = pd.DataFrame(points, columns=LABELS_C)
 
-    # remove all the initial sample points in total points
-    for p in our_points:
-        space_points.discard(tuple(p))
+    our_points = df_sample.values.tolist()
+    initial_counts = df_sample['Solvent'].value_counts().tolist()
 
-    df = pd.DataFrame(space_points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
-    df = df.sort_values('Solvent')
-    # sample_counts = df["Solvent"].value_counts().tolist()
-    all_points = our_points+df.values.tolist()
+    # Get points to represent the full sample space
+    if discrete:
+        space_points = get_all_discrete_points()
+        # remove all the initial sample points in total points/ no overlapping
+        for p in our_points:
+            space_points.discard(tuple(p))
+            
+        df_space = pd.DataFrame(space_points, columns=LABELS_D)
+        df_space = df_space.sort_values('Solvent')
+        all_points = our_points+df_space.values.tolist()
+        df_all = pd.DataFrame(all_points, columns=LABELS_D)
+    else:
+        # for continuous, we will just get a large amount of points to plot against
+        space_points = get_continuous_sobol_initial_points(1000, use_press)
+        df_space = pd.DataFrame(space_points, columns=LABELS_C)
+        df_space = df_space.sort_values('Solvent')
+        all_points = our_points+df_space.values.tolist()
+        df_all = pd.DataFrame(all_points, columns=LABELS_C)
 
+    # Replace solvent name with numbers for pca and umap
+    df_all['Solvent'] = df_all['Solvent'].replace(SOLV_NAMES, [0,1,2,3,4])
 
-    # round and standardize all points
-    df = pd.DataFrame(all_points, columns=["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"])
-    df['Solvent'] = df['Solvent'].replace(SOLV_NAMES, [0,1,2,3,4])
-    # df["Motor Speed"] = df["Motor Speed"].round(1)
-    # df["Temperature"] = df["Temperature"].round(1)
-
-    # Save initial sobol points to csv
-    # df['Solvent'] = df['Solvent'].replace([0,1,2,3,4], SOLV_NAMES)
-    # df.iloc[:n_points].to_csv("initial_points_" + model + ".csv")
     
-    model="DISCRETE" # vs CONTINUOUS
+    model="CONTINUOUS" # vs DISCRETE
     graph = "DENSITY" # vs SCATTER
-    color = "MONO" # vs MULTI
+    color = "MULTI" # vs MONO
     dataset_name = "Lab_Automation"
     color_list = ["orange", "red", "green", "cyan", "yellow"]
     color_labels = SOLV_NAMES.copy()
     color_labels.sort(key=str.lower)
     num_levels = 10
-    plot_pca_umap(df, "DISCRETE", "SCATTER", "MULTI", "Lab_Automation", n_points, initial_counts, color_list, color_labels, 10)
+    plot_pca_umap(df_all, model, graph, color, dataset_name, n_points, initial_counts, color_list, color_labels, 10)
 
+    # Save initial sobol points as they are to csv
+    print(df_sample)
+    df_sample["Motor Speed"] = df_sample["Motor Speed"].round(2)
+    df_sample["Precursor Volume"] = df_sample["Precursor Volume"].round(1)
+    df_sample.to_csv("initial_points_" + model + ".csv")
+
+    # fixing values so they can be used in lab
+    df_sample['Concentration'] = df_sample['Concentration'].multiply(2).subtract(1)
+    # data was given in pressure, need to convert to temp
+    for solv in SOLV_NAMES:
+        f = make_temp_from_pressure_f(solv)
+        df_sample.loc[df_sample['Solvent'] == solv, 'Temperature'] = df_sample.loc[df_sample['Solvent'] == solv, 'Pressure'].apply(f).subtract(273.15).round(2)
+    df_sample.to_csv("fixed_initial_points_" + model + '.csv')
+    print(df_sample)
     print("Time elapsed:", default_timer()- start)
 # """

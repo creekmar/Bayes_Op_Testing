@@ -11,27 +11,33 @@ import pandas as pd
 from skopt import Optimizer
 
 from benchmarks import dummy_measure
-from constants import get_all_temp_solv_bounds
-from initial_point_generator import get_sobol_initial_points
+from constants import get_all_press_solv_bounds, make_pressure_from_temp_f, to_Kelvin
+from initial_point_generator import get_continuous_sobol_initial_points
 from scikit_plot import print_results
 
 # discrete/categorical input space
-BP_SOLV = {61.2: "CF", 110.6: "TOL", 132: "CB", 214.4: "TCB", 180.1: "DCB"}
-BP = [61.2, 110.6, 132, 214.4, 180.1]
-CONCEN = [10, 15, 20]
-PRINT_GAP = [25, 50, 75, 100]
-PREC_VOL = [6, 9, 12]
+CONCEN = (1,5) # this will be mapped to the equation 2n-1
+PREC_VOL = (6.0, 12.0)
+SOLV = ["CF", "CB", "CB9:A1", "CB8:A2", "CB7:A3"]
+SPEED = (0.01, 20.0, "log-uniform") # make sure speed is logarithmic
+PRESSURE = (0.0, 0.5)
+TEMP_C = (25.0, 140.0)
+SOLV_PRESS_BOUNDS = get_all_press_solv_bounds(SOLV, TEMP_C, PRESSURE)
 
-# Speed, Temp, Concentration, print gap, vol, solvent
-SPACE = [(0.01,25.0),(20.0,140.0), CONCEN, PRINT_GAP, PREC_VOL, BP]
-SOLV_TEMP_BOUNDS = get_all_temp_solv_bounds()
+SPACE_LABELS = ["Motor Speed", "Pressure", "Precursor Volume", 
+                "Concentration", "Solvent"]
+
+# Speed, Pressure, vol, concentration, solvent
+SPACE = [SPEED, PRESSURE, PREC_VOL, CONCEN, SOLV]
+
 
 def material_constraint(params):
     """
-    Dummy boiling point constraint on materials
+    Pressure constraint based on materials vp vs temp curve
+    If pressure suggested is greater than the min, then true
+    @params list of space params used in the problem
     """
-    bounds = SOLV_TEMP_BOUNDS[BP_SOLV[params[5]]]
-    if bounds[0] <= params[1] <= bounds[1]:
+    if SOLV_PRESS_BOUNDS[params[4]][0] < params[1]:
         return True
     return False
 
@@ -39,7 +45,11 @@ def material_constraint(params):
 def test(model = "GP", model_name = "GP", base_dir = "./"):
     directory = base_dir + model_name
     print("Model used: " + model_name)
-    opt = Optimizer(SPACE, base_estimator=model, acq_func='EI',
+    
+    # Space on [pressure, motor speed, precursor volume, concentration, solvent]
+    opt = Optimizer(SPACE, 
+                    base_estimator="RF", # GBT or ET, can try GP 
+                    acq_func='UCB', # or EI
                     space_constraint=material_constraint)
     
     start = default_timer()
@@ -75,11 +85,9 @@ def test(model = "GP", model_name = "GP", base_dir = "./"):
     print_results(result, directory)
     print("Time elapsed for loop:", duration)
     # create dataframe to put in csv
-    col_names = ["Motor Speed", "Temperature", "Concentration", "Printing Gap", "Precursor Volume", "Solvent"]
-    df = pd.DataFrame(opt.Xi, columns=col_names)
+    df = pd.DataFrame(opt.Xi, columns=SPACE_LABELS)
     df["Objective"] = opt.yi
     df["Time"] = ts
-    df['Solvent'] = df['Solvent'].replace(BP_SOLV)
     df.to_csv("Scikit_Data.csv")
     # print("Dataframe", df)
 
