@@ -6,5 +6,6 @@ test.txt
 Tutorials
 ZZData
 .idea
+!Images/*.png
 *.csv
-*.png
+/*.png
