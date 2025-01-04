@@ -34,11 +34,14 @@ def mix(lst):
 
 def dummy_measure(params):
     """@return dummy measure for the parameters motor speed, heater,
-       concentration, printing gap, and precursor volume.
+       precursor volume, concentration, solvent/boiling point.
        An parabola to minimize
-       6.25 is the minimum"""
-    motor, heater, conc, gap, vol, bp = params
-    return (gap*motor +conc*pow(bp-heater, 2) + vol)
+       The minimum is where all parameters are at their min
+       1.011536 is the minimum with the current workspace"""
+    motor, heater, vol, conc, bp = params
+    print(params)
+
+    return (motor +conc*pow(heater, 2) + vol)
 
 if __name__ == "__main__":
-    print(rastrigan([0,1]))
+    print(dummy_measure([0.01, 0.016, 1, 6, 'CF']))

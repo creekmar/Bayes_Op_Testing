@@ -49,17 +49,18 @@ def test(model = "GP", model_name = "GP", base_dir = "./"):
     # Space on [pressure, motor speed, precursor volume, concentration, solvent]
     opt = Optimizer(SPACE, 
                     base_estimator="RF", # GBT or ET, can try GP 
-                    acq_func='UCB', # or EI
+                    acq_func='LCB', # or EI, gp_hedge for best results
                     space_constraint=material_constraint)
     
     start = default_timer()
     initial_points=14
-    points = get_sobol_initial_points(initial_points, True)
+    points = get_continuous_sobol_initial_points(initial_points, True)
     
     # Perform experiment and save values in ys
+    # NOTE: alternatively can read from a file, just make sure the order is the same
     ys = []
     for p in points:
-        ys.append(dummy_measure(p))
+        ys.append(dummy_measure(p)) # NOTE: if you want to maximize, need to negate ys 
     # tell the optimizer 
     opt.tell(points, ys)
 
@@ -73,7 +74,7 @@ def test(model = "GP", model_name = "GP", base_dir = "./"):
         # Run the experiment at the given conditions
         print("NEXT:", next_x)
         # Process the raw data
-        fval = dummy_measure(next_x)
+        fval = dummy_measure(next_x) # NOTE: if want to maximize, need to negate fval
         t1 = default_timer() - t0
         ts[initial_points+i] = t1
 

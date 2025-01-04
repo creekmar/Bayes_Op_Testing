@@ -6,8 +6,7 @@ Purpose: To show how evenly distributed the sample points from LHS
          points at a time vs when taken at one time
 """
 
-from timeit import default_timer
-from skopt import Optimizer, sampler
+from skopt import sampler
 from matplotlib import pyplot as plt
 
 
