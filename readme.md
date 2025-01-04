@@ -1,5 +1,5 @@
 # Bayes Optimization Testing for Lab Automation
-A coding space to test out different bayesian optimization frameworks and machine learning methods for the OPV lab automation project described here(https://github.com/changhwang/Lab_Automation/tree/master?tab=readme-ov-file#further-details).
+A coding space to test out different bayesian optimization frameworks and machine learning methods for the OPV lab automation project described [here](https://github.com/changhwang/Lab_Automation/tree/master?tab=readme-ov-file#further-details).
 
 ## Description
 Our mixed parameter space is [pressure, printing speed, precursor volume, concentration, and solvent], where concentration is discrete, solvent is categorical, and the rest are continuous. The objective we are maximizing is the dot product of a film's printability and stability. 
